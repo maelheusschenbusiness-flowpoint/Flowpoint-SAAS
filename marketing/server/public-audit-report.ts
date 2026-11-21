@@ -26,6 +26,15 @@ const MAX_HTML_BYTES = 512 * 1024;
 const MAX_CSS_BYTES = 64 * 1024;
 export const PUBLIC_AUDIT_STANDARD_SIGNUP_URL =
   "https://app.flowpoint.pro/signin.html?plan=standard";
+export const PUBLIC_AUDIT_PLAN_URLS = {
+  Standard: PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
+  Pro: "https://app.flowpoint.pro/signin.html?plan=pro",
+  Ultra: "https://app.flowpoint.pro/signin.html?plan=ultra",
+} as const;
+
+const MIN_CATEGORY_SCORED_CHECKS = 3;
+const MIN_CATEGORY_COVERAGE = 0.5;
+const MIN_OVERALL_SCORED_CATEGORIES = 4;
 
 type HtmlNode = {
   nodeName: string;
@@ -71,6 +80,13 @@ function collectElements(root: HtmlNode): HtmlNode[] {
 function getAttribute(node: HtmlNode, name: string): string | undefined {
   return node.attrs?.find((attribute) => attribute.name.toLowerCase() === name)
     ?.value;
+}
+
+function hasRelToken(node: HtmlNode, token: string): boolean {
+  return (getAttribute(node, "rel") ?? "")
+    .toLowerCase()
+    .split(/\s+/)
+    .includes(token);
 }
 
 function visibleText(node: HtmlNode): string {
@@ -173,6 +189,10 @@ export function scorePublicAuditCategory(
     ["passed", "failed", "warning"].includes(check.status),
   );
   const weighted = measured.filter((check) => check.severity !== "info");
+  const hasMinimumCoverage =
+    checks.length > 0 &&
+    weighted.length >= MIN_CATEGORY_SCORED_CHECKS &&
+    measured.length / checks.length >= MIN_CATEGORY_COVERAGE;
   const weights: Record<PublicAuditSeverity, number> = {
     critical: 4,
     high: 3,
@@ -185,7 +205,7 @@ export function scorePublicAuditCategory(
     0,
   );
   const score =
-    weighted.length >= 3 && denominator > 0
+    hasMinimumCoverage && denominator > 0
       ? Math.round(
           (weighted.reduce((sum, check) => {
             const value =
@@ -205,23 +225,38 @@ export function scorePublicAuditCategory(
   const passed = measured.filter((check) => check.status === "passed").length;
   const unmeasured = checks.length - measured.length;
   const title = PUBLIC_AUDIT_CATEGORIES.find((item) => item.key === key)!.title;
+  const coverage = {
+    measuredChecks: measured.length,
+    totalChecks: checks.length,
+  };
 
   return {
     key,
     title,
     score,
     status:
-      measured.length === 0
+      !hasMinimumCoverage
         ? "not_measured"
         : unmeasured === 0 && measured.length >= 4
           ? "measured"
           : "partial",
     summary:
-      measured.length === 0
-        ? "No reliable results were available for this area."
-        : `${passed} passed${failed ? `, ${failed} need attention` : ""}${warnings ? `, ${warnings} need review` : ""}${unmeasured ? `; ${unmeasured} not measured` : ""}.`,
+      !hasMinimumCoverage
+        ? `Measured ${measured.length} of ${checks.length} checks; there is not enough evidence to score this area.`
+        : `Measured ${measured.length} of ${checks.length} checks: ${passed} passed${failed ? `, ${failed} need attention` : ""}${warnings ? `, ${warnings} need review` : ""}${unmeasured ? `; ${unmeasured} not measured` : ""}.`,
+    coverage,
     checks,
   };
+}
+
+export function scorePublicAuditOverall(
+  categories: PublicAuditCategory[],
+): number | null {
+  const scored = categories
+    .map((category) => category.score)
+    .filter((score): score is number => score !== null);
+  if (scored.length < MIN_OVERALL_SCORED_CATEGORIES) return null;
+  return Math.round(scored.reduce((sum, score) => sum + score, 0) / scored.length);
 }
 
 async function runLimited<T, R>(
@@ -246,6 +281,7 @@ async function runLimited<T, R>(
 }
 
 function sameOriginUrl(raw: string, base: URL): string | null {
+  if (!raw.trim()) return null;
   try {
     const url = new URL(raw, base);
     if (
@@ -308,8 +344,10 @@ async function getPageSupportingData(
               .includes("stylesheet"),
         )
         .map((element) =>
-          sameOriginUrl(getAttribute(element, "href") ?? "", base),
+          getAttribute(element, "href")?.trim() ?? "",
         )
+        .filter(Boolean)
+        .map((raw) => sameOriginUrl(raw, base))
         .filter((value): value is string => Boolean(value)),
     ),
   ).slice(0, MAX_CSS_FILES);
@@ -322,10 +360,11 @@ async function getPageSupportingData(
         )
         .map((element) =>
           sameOriginUrl(
-            getAttribute(element, "src") ?? "",
+            getAttribute(element, "src")?.trim() ?? "",
             base,
           ),
         )
+        .filter((value) => Boolean(value))
         .filter((value): value is string => Boolean(value)),
     ),
   ).slice(0, MAX_ASSETS);
@@ -335,8 +374,10 @@ async function getPageSupportingData(
       elements
         .filter((element) => elementName(element) === "a")
         .map((element) =>
-          sameOriginUrl(getAttribute(element, "href") ?? "", base),
+          getAttribute(element, "href")?.trim() ?? "",
         )
+        .filter(Boolean)
+        .map((raw) => sameOriginUrl(raw, base))
         .filter((value): value is string => Boolean(value)),
     ),
   ).slice(0, MAX_INTERNAL_LINKS);
@@ -442,19 +483,21 @@ export async function createPublicAuditReport(
     elements.filter((element) => elementName(element) === tag);
   const first = (tag: string) => byTag(tag)[0];
   const title = normalizeText(visibleText(first("title") ?? { nodeName: "" }));
-  const metaDescription =
-    elements.find(
-      (element) =>
-        elementName(element) === "meta" &&
-        getAttribute(element, "name")?.toLowerCase() === "description",
-    ) ?? null;
-  const description =
-    getAttribute(metaDescription ?? { nodeName: "" }, "content")?.trim() ?? "";
-  const canonical = elements.find(
+  const metaDescriptions = elements.filter(
     (element) =>
-      elementName(element) === "link" &&
-      (getAttribute(element, "rel") ?? "").toLowerCase() === "canonical",
+      elementName(element) === "meta" &&
+      getAttribute(element, "name")?.toLowerCase() === "description",
   );
+  const descriptionValues = metaDescriptions
+    .map((element) => getAttribute(element, "content")?.trim() ?? "")
+    .filter(Boolean);
+  const description =
+    metaDescriptions.length === 1 ? descriptionValues[0] ?? "" : "";
+  const canonicalElements = elements.filter(
+    (element) =>
+      elementName(element) === "link" && hasRelToken(element, "canonical"),
+  );
+  const canonical = canonicalElements[0];
   const viewport = elements.find(
     (element) =>
       elementName(element) === "meta" &&
@@ -558,18 +601,21 @@ export async function createPublicAuditReport(
     .filter(
       (entry) =>
         entry.response &&
+        entry.response.status >= 200 &&
+        entry.response.status < 300 &&
         responseContentType(entry.response).includes("text/css"),
     )
     .map((entry) => decompressText(entry.response!, 512 * 1024) ?? "");
   const allCss = `${pageCssInline}\n${externalCssContents.join("\n")}`;
   const resourceCount = byTag("img").length + byTag("script").length + byTag("link").length;
-  const resourceBytes = support.assets.reduce(
-    (sum, item) =>
-      sum + Number(header(item.response?.headers ?? {}, "content-length") ?? 0),
-    0,
-  );
   const sameOriginAssets =
     support.assets.filter((item) => item.response).length;
+  const measuredAssets = support.assets.filter(
+    (item) => item.response && ![405, 501].includes(item.response.status),
+  );
+  const failedAssets = measuredAssets.filter(
+    (item) => item.response!.status < 200 || item.response!.status >= 300,
+  );
   const robotsDisallow = support.robots
     ? scanRobotsDisallow(support.robots.body)
     : null;
@@ -579,9 +625,11 @@ export async function createPublicAuditReport(
     "content",
   ) ?? "";
   const noIndex = /\bnoindex\b/i.test(`${metaRobots} ${robotsHeader}`);
-  const canonicalUrl = canonical
-    ? sameOriginUrl(getAttribute(canonical, "href") ?? "", pageUrl)
-    : null;
+  const canonicalRaw = getAttribute(canonical ?? { nodeName: "" }, "href") ?? "";
+  const canonicalUrl =
+    canonical && canonicalElements.length === 1
+      ? sameOriginUrl(canonicalRaw, pageUrl)
+      : null;
   const lang =
     getAttribute(first("html") ?? { nodeName: "" }, "lang")?.trim() ?? "";
   const hasJsonLd = byTag("script").filter(
@@ -632,16 +680,30 @@ export async function createPublicAuditReport(
     )
     .filter((raw) => /^http:\/\//i.test(raw)).length;
   const cssHasMediaQuery = /@media\b/i.test(allCss);
-  const cssResourcesMeasured = support.css.filter((item) => item.response).length;
+  const cssResourcesMeasured = support.css.filter(
+    (item) =>
+      item.response &&
+      item.response.status >= 200 &&
+      item.response.status < 300 &&
+      responseContentType(item.response).includes("text/css"),
+  ).length;
+  const cssSourcesMeasured =
+    cssResourcesMeasured + (pageCssInline.trim() ? 1 : 0);
   const titleLength = title.length;
   const descriptionLength = description.length;
-  const internalLinkFailures = support.internalLinks.filter(
-    (item) => item.response && item.response.status >= 400,
+  const measuredInternalLinks = support.internalLinks.filter(
+    (item) =>
+      item.response && ![405, 501].includes(item.response.status),
   );
-  const unsupportedLinkMethods = support.internalLinks.filter(
-    (item) => item.response && [405, 501].includes(item.response.status),
+  const internalLinkFailures = measuredInternalLinks.filter(
+    (item) => item.response!.status >= 400,
   );
-  const internalLinkMeasured = support.internalLinks.length - unsupportedLinkMethods.length;
+  const internalLinkMeasured = measuredInternalLinks.length;
+  const unmeasuredInternalLinks =
+    support.internalLinks.length - internalLinkMeasured;
+  const redirectedInternalLinks = measuredInternalLinks.filter(
+    (item) => item.response!.status >= 300 && item.response!.status < 400,
+  ).length;
   const anchorStatus = unresolvedAnchors === 0 ? "passed" : "warning";
 
   const resultByKey: Record<PublicAuditCategoryKey, PublicAuditCheck[]> = {
@@ -663,34 +725,44 @@ export async function createPublicAuditReport(
       makeCheck(
         "seo-description",
         "Meta description",
-        description
-          ? classifyThreshold(descriptionLength, 160, 200)
-          : "failed",
+        metaDescriptions.length > 1
+          ? "warning"
+          : description
+            ? classifyThreshold(descriptionLength, 160, 200)
+            : "failed",
         "medium",
-        description
-          ? `${descriptionLength} characters`
-          : "No meta description was found.",
+        metaDescriptions.length > 1
+          ? `${metaDescriptions.length} meta description tags were found; their signals conflict.`
+          : description
+            ? `${descriptionLength} characters`
+            : "No non-empty meta description was found.",
         "The audit reads the description meta tag from the HTML response.",
         "A useful description can help people understand the page before opening it.",
-        description
-          ? "Write a clear summary and keep it concise."
-          : "Add a page-specific meta description.",
+        metaDescriptions.length > 1
+          ? "Keep one page-specific meta description and remove duplicate tags."
+          : description
+            ? "Write a clear summary and keep it concise."
+            : "Add a page-specific meta description.",
       ),
       makeCheck(
         "seo-canonical",
         "Canonical URL",
-        canonical
-          ? canonicalUrl
-            ? "passed"
-            : "warning"
-          : "warning",
+        canonicalElements.length === 1 && canonicalUrl ? "passed" : "warning",
         "medium",
-        canonical
-          ? canonicalUrl ?? "The canonical URL was absent or not same-origin."
-          : "No canonical link was found.",
+        canonicalElements.length > 1
+          ? `${canonicalElements.length} canonical links were found; the preferred URL is ambiguous.`
+          : canonicalUrl
+            ? `One same-site canonical URL points to ${new URL(canonicalUrl).origin}${new URL(canonicalUrl).pathname}.`
+            : canonical
+              ? "The canonical URL is empty, invalid, or points to another origin."
+              : "No canonical link was found.",
         "The audit checks whether a canonical URL is present and points to this public site.",
         "A clear canonical URL can reduce ambiguity between duplicate page URLs.",
-        "Add or verify a self-referencing canonical URL for this page.",
+        canonicalElements.length > 1
+          ? "Keep one canonical link and verify that it points to the preferred page URL."
+          : canonical
+            ? "Use one valid same-site canonical URL that identifies the preferred version of this page."
+            : "Add a canonical link that identifies the preferred version of this page.",
       ),
       makeCheck(
         "seo-indexing",
@@ -735,7 +807,7 @@ export async function createPublicAuditReport(
         "seo-robots",
         "Robots.txt response",
         support.robots
-          ? support.robots.status < 400
+          ? support.robots.status >= 200 && support.robots.status < 300
             ? "passed"
             : "warning"
           : "not_measured",
@@ -752,7 +824,7 @@ export async function createPublicAuditReport(
         "seo-sitemap",
         "Sitemap response",
         support.sitemap
-          ? support.sitemap.status < 400
+          ? support.sitemap.status >= 200 && support.sitemap.status < 300
             ? "passed"
             : "warning"
           : "not_measured",
@@ -816,20 +888,21 @@ export async function createPublicAuditReport(
         "Review the browser waterfall before combining or removing resources.",
       ),
       makeCheck(
-        "performance-resource-sizes",
-        "Same-site asset headers",
-        support.assets.length === 0
+        "performance-resource-availability",
+        "Sampled same-site asset availability",
+        measuredAssets.length === 0
           ? "not_measured"
-          : sameOriginAssets === support.assets.length
+          : failedAssets.length === 0 &&
+              measuredAssets.length === support.assets.length
             ? "passed"
             : "warning",
         "low",
         support.assets.length
-          ? `${sameOriginAssets} of ${support.assets.length} sampled same-site assets returned HEAD responses; declared size was ${Math.round(resourceBytes / 1024)} KB.`
+          ? `${sameOriginAssets} of ${support.assets.length} sampled assets returned HEAD responses; ${failedAssets.length} returned non-success status and ${support.assets.length - measuredAssets.length} could not be assessed.`
           : "No same-site image, script, or iframe resources were sampled.",
-        "A small sample of same-origin assets was checked using HEAD requests only.",
-        "Oversized or unavailable assets can affect real browser loads.",
-        "Use a browser waterfall to measure full download sizes and loading behavior.",
+        "A small sample of same-origin assets was checked using HEAD requests only; this does not measure download size or browser loading.",
+        "Unavailable assets may affect visitors, while a successful HEAD response does not prove fast loading.",
+        "Verify any flagged asset with a normal page load, then use a browser waterfall to assess its transfer and loading behavior.",
         support.assets.length ? "moderate" : null,
       ),
       notMeasured(
@@ -1063,19 +1136,19 @@ export async function createPublicAuditReport(
       makeCheck(
         "mobile-media-queries",
         "Responsive CSS declarations",
-        cssResourcesMeasured === 0
+        cssSourcesMeasured === 0
           ? "not_measured"
           : cssHasMediaQuery
             ? "passed"
             : "warning",
         "medium",
-        cssResourcesMeasured
-          ? `${cssResourcesMeasured} stylesheet responses checked; ${cssHasMediaQuery ? "a media query was found." : "no @media rule was found in sampled CSS."}`
+        cssSourcesMeasured
+          ? `${cssResourcesMeasured} successful external stylesheet responses and ${pageCssInline.trim() ? "inline CSS" : "no inline CSS"} checked; ${cssHasMediaQuery ? "a media query was found." : "no @media rule was found in the inspected source."}`
           : "No same-origin stylesheet content could be measured.",
         "The audit checks a small sample of same-origin CSS and inline styles; it does not render the page.",
         "Responsive rules can adapt layout to different screen sizes.",
         "Test the layout in real mobile and desktop browsers.",
-        cssResourcesMeasured ? "moderate" : null,
+        cssSourcesMeasured ? "moderate" : null,
       ),
       makeCheck(
         "mobile-srcset",
@@ -1196,12 +1269,14 @@ export async function createPublicAuditReport(
         "Sampled internal links",
         internalLinkMeasured === 0
           ? "not_measured"
-          : internalLinkFailures.length === 0
+          : internalLinkFailures.length === 0 &&
+              unmeasuredInternalLinks === 0 &&
+              redirectedInternalLinks === 0
             ? "passed"
             : "warning",
         "medium",
         internalLinkMeasured
-          ? `${internalLinkMeasured} same-site links checked with HEAD; ${internalLinkFailures.length} returned HTTP 4xx or 5xx.`
+          ? `${internalLinkMeasured} of ${support.internalLinks.length} sampled same-site links had usable HEAD responses; ${internalLinkFailures.length} returned HTTP 4xx or 5xx, ${redirectedInternalLinks} returned 3xx, and ${unmeasuredInternalLinks} were not measurable.`
           : "No same-site links could be measured with HEAD requests.",
         "Only the first few unique same-origin links are sampled; some sites treat HEAD differently from GET.",
         "Broken internal links can interrupt visitor journeys and crawl paths.",
@@ -1301,7 +1376,7 @@ export async function createPublicAuditReport(
         "Search snippet copy",
         title && description ? "passed" : "warning",
         "low",
-        `Title: ${title ? "present" : "missing"}; description: ${description ? "present" : "missing"}.`,
+        `Title: ${title ? "present" : "missing"}; description: ${metaDescriptions.length > 1 ? `ambiguous (${metaDescriptions.length} tags)` : description ? "present" : "missing"}.`,
         "The audit checks whether the page has title and description text, not whether claims are accurate.",
         "Clear summaries set expectations before a visit.",
         "Write a concise summary that accurately reflects this page.",
@@ -1326,11 +1401,15 @@ export async function createPublicAuditReport(
     .map((category) => category.score)
     .filter((score): score is number => score !== null);
   const allChecks = categories.flatMap((category) => category.checks);
+  const measuredChecks = allChecks.filter((check) =>
+    ["passed", "failed", "warning"].includes(check.status),
+  ).length;
   const actionPlan = allChecks
     .filter(
       (check) =>
         ["failed", "warning"].includes(check.status) &&
         check.priority < 5 &&
+        check.evidence !== null &&
         check.recommendation,
     )
     .sort(
@@ -1347,6 +1426,9 @@ export async function createPublicAuditReport(
           category.checks.some((candidate) => candidate.id === check.id),
         )?.title ?? "Website health",
       priority: check.priority,
+      severity: check.severity,
+      evidence: check.evidence,
+      explanation: check.explanation,
       impact: check.impact,
       difficulty: check.difficulty,
       reason: check.recommendation,
@@ -1356,21 +1438,25 @@ export async function createPublicAuditReport(
     url: page.requestedUrl,
     finalUrl: base,
     checkedAt: new Date().toISOString(),
-    overallScore:
-      scoredCategories.length > 0
-        ? Math.round(
-            scoredCategories.reduce((sum, score) => sum + score, 0) /
-              scoredCategories.length,
-          )
-        : null,
+    overallScore: scorePublicAuditOverall(categories),
+    coverage: {
+      measuredChecks,
+      totalChecks: allChecks.length,
+      scoredCategories: scoredCategories.length,
+      totalCategories: categories.length,
+    },
     categories,
     actionPlan,
     recommendation: {
       plan: "Standard",
       priceEur: 29,
       reason:
-        "This check covers one public page. Standard is the closest match for ongoing automated SEO audits. A single-page scan cannot tell whether you need multiple locations, Google Analytics 4, or white-label reporting, so compare Pro or Ultra only if those capabilities fit your team.",
+        "This report checks one public page and cannot determine which subscription fits your team. Compare Standard, Pro, and Ultra based on the features and scale you need.",
       href: PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
+      planLinks: Object.entries(PUBLIC_AUDIT_PLAN_URLS).map(([plan, href]) => ({
+        plan: plan as keyof typeof PUBLIC_AUDIT_PLAN_URLS,
+        href,
+      })),
     },
     quota,
   };
