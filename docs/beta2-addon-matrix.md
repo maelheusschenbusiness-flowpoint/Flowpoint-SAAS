@@ -94,3 +94,30 @@ Le rapport archivé du 3 novembre nomme exactement ces huit remplacements : GBP 
 - Stripe conserve les événements, PaymentIntents/SetupIntents réussis et factures déjà payées; ces objets ne peuvent pas être supprimés par ce nettoyage. Ils sont identifiés dans la sortie du runner. Les cartes Stripe de test partagées, prix existants et toute ressource préexistante ne sont pas détachés, modifiés ni supprimés.
 - **GitHub, état vérifié le 10 novembre :** PR #411, #412 et #415 sont intégrées à `Test-Replit` après contrôle requis vert, branche à jour et absence de conflit; la tête de `Test-Replit` a été vérifiée après #415. PR #413 reste ouverte en brouillon et les nouveaux changements locaux de cette certification ne lui ont pas été poussés. PR #410 est intégrée, ce qui corrige son statut périmé à la ligne 14. Aucune protection GitHub n’a été modifiée.
 - Aucune modification Production, Stripe LIVE, prix Stripe TEST existants, DNS, abonnement préexistant, quota, monitor Better Stack ou protection GitHub n’a été effectuée.
+
+## Rejeu navigateur isolé — 17 novembre 2026
+
+Arbre intégré `claude/integration-test-replit-all` @ 6437e0b3, copie propre exportée par `git archive` (aucune modification locale des tests ni du code produit ; seul le runner reçoit la création des rôles Supabase). Un module à la fois, PostgreSQL jetable et serveur neufs par module, aucun autre processus en parallèle. Témoin : `origin/Test-Replit` @ f0033049, mêmes commandes.
+
+| Module (parcours navigateur ciblé) | Intégré 1ʳᵉ passe | Témoin Test-Replit | Verdict |
+|---|---|---|---|
+| AI GBP Posting | OK | — | validé |
+| Revenue Leak AI | OK | — | validé |
+| AI Forecasting Engine | OK | — | validé |
+| Advanced SEO Lab | OK | — | validé |
+| AI CRO Strategist | OK | — | validé |
+| AI Workspace Launch | OK | — | validé |
+| Backlink Intelligence | OK | — | validé |
+| GBP Performance & Leads | OK | — | validé |
+| Local Presence Optimizer | OK | — | validé |
+| Local Landing Opportunities | OK | — | validé |
+| Global Monitoring | échec | 1 OK / 3 | **instable, déjà présent sans l'intégration** |
+| Conversion Opportunity Engine | échec | 1 OK / 4 | **instable, déjà présent sans l'intégration** |
+| SEO Change Impact + 3 modules du parcours commun (Agency Portfolio Priorities, Technical SEO Fix Verification, Organic Campaign Tracker) | échec | 2 OK / 3 | **instable, déjà présent sans l'intégration** |
+| Agency Reporting Packs (quota/visiteur, rapport multi-sites, cron) | échec (timeout `selectOption`) | 3 OK / 3 | à surveiller : un échec isolé, non reproduit sur le témoin |
+
+Symptômes des instabilités : à l'enregistrement, le serveur reçoit les valeurs par défaut (`minimumSessions` 100 au lieu de 250, `lookbackDays` 30 au lieu de 60) ; Global Monitoring affiche brièvement le message d'erreur du serveur puis le remet à « Charger les régions… ». Hypothèse non vérifiée : le panneau est redessiné après la saisie par un chargement tardif des réglages, ce qui écrase la valeur tapée. Si l'hypothèse se confirme, c'est un défaut produit réel (une saisie utilisateur peut être perdue) et non un simple test fragile. Aucune correction n'est faite ici, hors périmètre de la consolidation.
+
+Sept modules sans parcours navigateur ciblé dans le registre (Behavioral AI, AI Executive Reporting, AI Market Intelligence, CRM Integrations, Keyword Domination Engine, SLA Monitoring Avancé, SEO Content Decay Radar) : couverts par tests unitaires, routes et interface, pas par le navigateur. À ne pas présenter comme « certifiés navigateur ».
+
+Conclusion : 10 modules validés au navigateur, 4 avec parcours instable (aucune régression due à l'intégration, démontrée par le témoin), 7 sans parcours navigateur. Aucune certification fournisseur réelle (Better Stack, HubSpot, DataForSEO, GA4/GSC) n'a été exécutée.
