@@ -1,5 +1,4 @@
-import { Router, type Request } from "express";
-import { pool } from "@workspace/db";
+import { Router, type Request, type Response } from "express";
 import { canWrite } from "../middlewares/requireRole.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { getPerformance, getValidToken } from "../services/google-service.js";
@@ -21,8 +20,18 @@ const router = Router();
 // Engine) before Express gets a chance to reach their own authorization gate.
 router.use("/gbp-performance", requireAddon("gbpPerformanceLeads", "GBP Performance & Leads"));
 
-async function readSettings(tenantId: string) {
-  const result = await pool.query(
+type OrgDb = (sql: string, values?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+
+// Requetes executees dans le contexte tenant de la requete (`req.orgDb`, RLS par
+// organisation) et non par le pool global : le filtre `org_id` reste en seconde garde.
+function orgDbOf(req: Request, res: Response): OrgDb | null {
+  const db = (req as Request & { orgDb?: OrgDb }).orgDb;
+  if (!db) { res.status(401).json({ ok: false, error: "Contexte d’organisation requis." }); return null; }
+  return db;
+}
+
+async function readSettings(db: OrgDb, tenantId: string) {
+  const result = await db(
     `SELECT settings FROM gbp_performance_settings WHERE org_id=$1 LIMIT 1`,
     [tenantId],
   );
@@ -33,10 +42,12 @@ async function readSettings(tenantId: string) {
 router.get("/gbp-performance", async (req, res) => {
   const tenantId = requireOrgId(req, res);
   if (!tenantId) return;
+  const db = orgDbOf(req, res);
+  if (!db) return;
   try {
     const [settings, locationResult] = await Promise.all([
-      readSettings(tenantId),
-      pool.query(
+      readSettings(db, tenantId),
+      db(
         `SELECT id, name, raw_data
          FROM google_locations WHERE org_id=$1 ORDER BY name`,
         [tenantId],
@@ -112,6 +123,8 @@ router.get("/gbp-performance", async (req, res) => {
 router.put("/gbp-performance/settings", canWrite, async (req, res) => {
   const tenantId = requireOrgId(req, res);
   if (!tenantId) return;
+  const db = orgDbOf(req, res);
+  if (!db) return;
   const settings = parseGbpPerformanceSettings(req.body);
   if (!settings) {
     res.status(400).json({ ok: false, code: "INVALID_SETTINGS", error: "Paramètres de performance GBP invalides." });
@@ -119,7 +132,7 @@ router.put("/gbp-performance/settings", canWrite, async (req, res) => {
   }
   try {
     if (settings.locationId) {
-      const ownedLocation = await pool.query(
+      const ownedLocation = await db(
         `SELECT id FROM google_locations WHERE id=$1 AND org_id=$2 LIMIT 1`,
         [settings.locationId, tenantId],
       );
@@ -128,7 +141,7 @@ router.put("/gbp-performance/settings", canWrite, async (req, res) => {
         return;
       }
     }
-    const saved = await pool.query(
+    const saved = await db(
       `INSERT INTO gbp_performance_settings (org_id, settings, updated_at)
        VALUES ($1, $2::jsonb, NOW())
        ON CONFLICT (org_id) DO UPDATE
