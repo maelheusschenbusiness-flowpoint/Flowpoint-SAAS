@@ -1,0 +1,122 @@
+{
+  "mode": "sans",
+  "total": 19,
+  "ok": 19,
+  "results": [
+    {
+      "addon": "organicCampaignTracker",
+      "check": "absent de /api/plans/catalog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "absent de /api/plans/catalog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "absent de /api/plans/catalog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "absent de /api/plans/catalog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "catalogue",
+      "check": "add-on existant toujours present (keywordDomination)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "authentifie sans droit d'add-on -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "ecriture sans droit -> 402 (aucune ecriture)",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "authentifie sans droit d'add-on -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "ecriture sans droit -> 402 (aucune ecriture)",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "authentifie sans droit d'add-on -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "ecriture sans droit -> 402 (aucune ecriture)",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "authentifie sans droit d'add-on -> 402",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "ecriture sans droit -> 402 (aucune ecriture)",
+      "ok": true,
+      "detail": "402"
+    },
+    {
+      "addon": "organicCampaignTracker",
+      "check": "carte INVISIBLE dans le marche",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "technicalSeoFixVerification",
+      "check": "carte INVISIBLE dans le marche",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "seoChangeImpact",
+      "check": "carte INVISIBLE dans le marche",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "conversionOpportunityEngine",
+      "check": "carte INVISIBLE dans le marche",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "marche",
+      "check": "carte existante visible (Keyword Domination Engine)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "addon": "console",
+      "check": "aucune erreur de script du tableau de bord",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "errors": []
+}

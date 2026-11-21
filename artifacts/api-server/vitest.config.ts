@@ -69,6 +69,29 @@ export default defineConfig({
       "src/services/ensure-stripe-customer.test.ts",
       "src/agent/ai-tool-gate.test.ts",
       "src/lib/plans.test.ts",
+      // Lot 1 add-ons : garde prix LIVE (add-on invisible et non achetable sans variable de prix)
+      "src/lib/addon-price-gate.test.ts",
+      // gsc_keyword_data creee hors du bloc v3 (absente de la production)
+      "src/services/gsc-keyword-data-schema-db.test.ts",
+      // [lot1:organicCampaignTracker]
+      "src/routes/organic-campaign-tracker.test.ts",
+      "src/services/organic-campaign-tracker.test.ts",
+      "src/lib/addon-organic-campaign-tracker-gate.test.ts",
+
+      // [lot1:technicalSeoFixVerification]
+      "src/routes/technical-seo-fix-verification.test.ts",
+      "src/services/technical-seo-fix-verification.test.ts",
+      "src/lib/addon-technical-seo-fix-verification-gate.test.ts",
+
+      // [lot1:seoChangeImpact]
+      "src/routes/seo-change-impact.test.ts",
+      "src/services/seo-change-impact.test.ts",
+      "src/lib/addon-seo-change-impact-gate.test.ts",
+
+      // [lot1:conversionOpportunityEngine]
+      "src/routes/conversion-opportunity-engine.test.ts",
+      "src/services/conversion-opportunity-engine.test.ts",
+      "src/lib/addon-conversion-opportunity-engine-gate.test.ts",
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",

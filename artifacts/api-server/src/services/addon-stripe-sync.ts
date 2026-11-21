@@ -122,7 +122,10 @@ async function findOrCreateAddonSubscription(
     billing_cycle_anchor: "now",
     payment_behavior: "default_incomplete",
     expand: ["items.data.price"],
-  } as Parameters<typeof stripe.subscriptions.create>[0]);
+  } as Parameters<typeof stripe.subscriptions.create>[0], {
+    // Meme fenetre de 30 s => meme abonnement (protection multi-instances).
+    idempotencyKey: `addon-sub:${orgId}:${firstPriceId}:${Math.floor(Date.now() / 30_000)}`,
+  });
   logger.info(
     { orgId, subId: created.id, stripeCustomerId, firstPriceId, firstQty },
     "[AddonSync] Created dedicated add-on subscription",
@@ -147,7 +150,7 @@ async function findOrCreateAddonSubscription(
  * Never throws — a Stripe failure must not undo the DB activation, but it is
  * reported so the route can surface a warning.
  */
-export async function syncAddonWithStripe(
+async function syncAddonWithStripeUnlocked(
   orgId: string,
   addonKey: string,
   action: "activate" | "deactivate",
@@ -207,8 +210,13 @@ export async function syncAddonWithStripe(
         const planSub = await stripe.subscriptions.retrieve(ctx.stripeSubscriptionId, {
           expand: ["items.data.price"],
         });
-        itemOnPlanSub = (planSub.items.data as StripeSubItem[]).find(it => it.price?.id === priceId);
-        planSubId = planSub.id;
+        // Un abonnement d'add-on n'est pas l'abonnement du plan (id ecrase par erreur
+        // en base) : ne jamais le traiter comme tel.
+        const planMeta = (planSub as { metadata?: Record<string, string> }).metadata;
+        if (planMeta?.["addonSub"] !== "true") {
+          itemOnPlanSub = (planSub.items.data as StripeSubItem[]).find(it => it.price?.id === priceId);
+          planSubId = planSub.id;
+        }
       } catch (_e) {
         // Subscription may not exist in current Stripe mode — continue
       }
@@ -333,4 +341,25 @@ export async function syncAddonWithStripe(
     logger.error({ err, orgId, addonKey, action }, "[AddonSync] Stripe sync failed");
     return { synced: false, reason: "stripe_error" };
   }
+}
+
+// Serialisation par organisation : deux activations simultanees creaient deux
+// abonnements d'add-on (double facturation constatee en Stripe TEST).
+const verrousOrg = new Map<string, Promise<unknown>>();
+
+export function syncAddonWithStripe(
+  orgId: string,
+  addonKey: string,
+  action: "activate" | "deactivate",
+  quantity = 1,
+): Promise<AddonSyncResult> {
+  const precedent = verrousOrg.get(orgId) ?? Promise.resolve();
+  const courant = precedent
+    .catch(() => undefined)
+    .then(() => syncAddonWithStripeUnlocked(orgId, addonKey, action, quantity));
+  verrousOrg.set(orgId, courant);
+  void courant.finally(() => {
+    if (verrousOrg.get(orgId) === courant) verrousOrg.delete(orgId);
+  }).catch(() => undefined);
+  return courant;
 }

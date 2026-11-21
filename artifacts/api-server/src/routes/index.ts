@@ -55,6 +55,18 @@ import locationRouter from "./location.js";
 import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
 import plansRouter from "./plans.js";
+// [lot1:organicCampaignTracker:import]
+import organicCampaignTrackerRouter from "./organic-campaign-tracker.js";
+
+// [lot1:technicalSeoFixVerification:import]
+import technicalSeoFixVerificationRouter from "./technical-seo-fix-verification.js";
+
+// [lot1:seoChangeImpact:import]
+import seoChangeImpactRouter from "./seo-change-impact.js";
+
+// [lot1:conversionOpportunityEngine:import]
+import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.js";
+
 import securityRouter from "./security.js";
 import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
 import analyticsRouter from "./analytics.js";
@@ -244,5 +256,18 @@ router.use("/conversion",  conversionRouter);
 router.use("/data-explorer", dataExplorerRouter);
 router.use("/client-mode", clientModeRouter);
 router.use(progressionRouter);
+
+// Add-ons du lot 1 (garde prix) : routes protegees par requireAddon(<cle>) ; une section par add-on.
+// [lot1:organicCampaignTracker]
+router.use(organicCampaignTrackerRouter);
+
+// [lot1:technicalSeoFixVerification]
+router.use(technicalSeoFixVerificationRouter);
+
+// [lot1:seoChangeImpact]
+router.use(seoChangeImpactRouter);
+
+// [lot1:conversionOpportunityEngine]
+router.use(conversionOpportunityEngineRouter);
 
 export default router;

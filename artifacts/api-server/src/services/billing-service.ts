@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, computeQtyAddonExtras, getAddonAvailability } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, computeQtyAddonExtras, getAddonAvailability, isPriceGatedAddonKey } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -101,11 +101,25 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   aiCreditsPack50k:      { icon: "🤖", unit: "+50 000 crédits"      },
   aiCreditsPack200k:     { icon: "🤖", unit: "+200 000 crédits"     },
   aiCreditsPack500k:     { icon: "🤖", unit: "+500 000 crédits"     },
+  // ── Lot 1 (garde prix : voir lib/plans.ts, PRICE_GATED_ADDONS) ─────────────
+  // [lot1:organicCampaignTracker]
+  organicCampaignTracker: { icon: "🎯", unit: "suivi de campagne" },
+
+  // [lot1:technicalSeoFixVerification]
+  technicalSeoFixVerification: { icon: "🛠️", unit: "vérification corrective" },
+
+  // [lot1:seoChangeImpact]
+  seoChangeImpact: { icon: "↕️", unit: "impact SEO mesuré" },
+
+  // [lot1:conversionOpportunityEngine]
+  conversionOpportunityEngine: { icon: "📈", unit: "opportunités conversion" },
 };
 
 export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {
   if (REMOVED_ADDONS.has(id)) return [];
   const def = ADDON_DEFINITIONS[id];
+  // Add-on « garde prix » dont le prix n'est pas configuré : absent du catalogue, sans bruit.
+  if (!def && isPriceGatedAddonKey(id)) return [];
   if (!def) {
     logger.error({ addonKey: id }, "[Billing] ADDON_CATALOG references an unknown add-on key — omitted");
     return [];
