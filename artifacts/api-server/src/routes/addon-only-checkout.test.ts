@@ -198,6 +198,8 @@ beforeEach(() => {
   // prod; here we are in vitest, so force a test env for the injection).
   process.env["NODE_ENV"] = "test";
   process.env["STRIPE_SECRET_KEY"] ||= "sk_live_dummy_for_tests";
+  // CI force STRIPE_TEST_MODE=true : en mode test seule une cle sk_test_ est utilisable (jamais LIVE).
+  process.env["STRIPE_TEST_KEY"] ||= "sk_test_dummy_for_tests";
   canonicalAnchorCustomer = null;
   setStripeForTesting(makeFakeStripe());
 });
