@@ -51,7 +51,7 @@ router.put("/local-presence/settings", canWrite, async (req, res) => {
   if (!id || !db) { res.status(401).json({ error: "Contexte d’organisation requis." }); return; }
   const body = (req.body ?? {}) as { locationId?: unknown; trackedFields?: unknown };
   if (body.locationId !== undefined && body.locationId !== null && typeof body.locationId !== "string") {
-    res.status(400).json({ error: "Identifiant de fiche GBP invalide.", code: "INVALID_LOCATION_ID" }); return;
+    res.status(400).json({ error: "Invalid GBP location id.", code: "INVALID_LOCATION_ID" }); return;
   }
   const locationId = typeof body.locationId === "string" && body.locationId ? body.locationId : null;
   const allowed = new Set<string>(LOCAL_PRESENCE_FIELDS.map(field => field.key));
@@ -63,7 +63,7 @@ router.put("/local-presence/settings", canWrite, async (req, res) => {
       : body.trackedFields.filter(key => typeof key !== "string" || !allowed.has(key)).map(key => String(key));
     if (bad.length) {
       res.status(400).json({
-        error: `Critère(s) de présence inconnu(s) : ${bad.join(", ")}.`,
+        error: `Unknown presence criteria: ${bad.join(", ")}.`,
         code: "INVALID_TRACKED_FIELDS",
         allowed: [...allowed],
       });
