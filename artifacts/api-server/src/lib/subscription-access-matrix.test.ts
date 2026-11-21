@@ -11,7 +11,8 @@ import { describe, it, expect } from "vitest";
 import { normalizeSubscriptionStatus, grantsPaidAccess } from "./subscription-state.js";
 
 const NOW = new Date("2026-11-08T12:00:00Z");
-const future = "2026-11-20T00:00:00Z";
+// Date relative : une date figee finit par etre depassee et fait echouer la CI (cas du 20/11/2026).
+const future = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
 const past = "2026-11-01T00:00:00Z";
 const SUB = "sub_123";
 const CUS = "cus_123";
