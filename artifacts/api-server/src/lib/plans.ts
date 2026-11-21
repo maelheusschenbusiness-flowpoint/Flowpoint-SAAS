@@ -686,6 +686,11 @@ PRICE_GATED_ADDONS["agencyPortfolioPriorities"] = {
 };
 
 // [lot2:localLandingOpportunities]
+PRICE_GATED_ADDONS["localLandingOpportunities"] = {
+  definition: { name: "Local Landing Opportunities", category: "Local SEO", description: "Repérez les recherches locales réelles qui justifient une page de service ou de zone.", priceEur: 15, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_LOCAL_LANDING_OPPORTUNITIES",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_LANDING"],
+};
 
 // [lot2:localPresenceOptimizer]
 

@@ -118,6 +118,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   agencyPortfolioPriorities: { icon: "🗂️", unit: "priorités portfolio" },
 
   // [lot2:localLandingOpportunities]
+  localLandingOpportunities: { icon: "📍", unit: "opportunités locales" },
 
   // [lot2:localPresenceOptimizer]
 

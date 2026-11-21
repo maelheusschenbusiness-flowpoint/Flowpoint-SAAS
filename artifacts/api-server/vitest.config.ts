@@ -102,6 +102,9 @@ export default defineConfig({
       "src/lib/addon-agency-portfolio-priorities-gate.test.ts",
 
       // [lot2:localLandingOpportunities]
+      "src/routes/local-landing-opportunities.test.ts",
+      "src/services/local-landing-opportunities.test.ts",
+      "src/lib/addon-local-landing-opportunities-gate.test.ts",
 
       // [lot2:localPresenceOptimizer]
 

@@ -10169,6 +10169,7 @@ function renderBilling() {
       { key:'reviewIntelligence', cat:'Local SEO',  name:'Review Intelligence', icon:'⭐', color:'#22c55e', active:!!(me.addons?.reviewIntelligence), tag:'Sentiment IA',    roi:'+38% note moyenne',    desc:'IA de sentiment sur vos avis Google. Réponses automatiques et alertes critiques.', features:['Analyse sentiment de chaque avis','Réponses IA personnalisées en 1 clic','Alertes avis négatifs en temps réel','Rapport tendance note mensuel','Score réputation par établissement'] },
       { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), tag:'Heatmap',         roi:'Visibilité Maps 360°',    desc:'Heatmaps de visibilité locale. Analysez votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse du Local Pack position par position','Comparaison vs concurrents sur la carte','Alertes perte de position Maps','Rapport visibilité locale hebdomadaire'] },
       // [lot2:localLandingOpportunities]
+      { key:'localLandingOpportunities', gated:true, openFn:'fpOpenLocalLandingOpportunities', cat:'Local SEO', name:'Local Landing Opportunities', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localLandingOpportunities), tag:'Local SEO', roi:'Recherches locales propices à une page', desc:'Repérez les recherches locales réelles qui justifient une page de service ou de zone.', features:['Opportunités fondées sur les recherches disponibles','Pages de service ou de zone à examiner','Priorisation par opportunité locale'] },
 
       // [lot2:localPresenceOptimizer]
 
@@ -15959,6 +15960,7 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
   'agency-portfolio-priorities',
 
   // [lot2:localLandingOpportunities]
+  'local-landing-opportunities',
 
   // [lot2:localPresenceOptimizer]
 
@@ -16186,6 +16188,14 @@ function _doRender() {
       break;
 
     // [lot2:localLandingOpportunities]
+    case 'local-landing-opportunities':
+      html = '<div id="fp-addon-local-landing-opportunities"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-local-landing-opportunities');
+        const renderAddon = window.FP_ADDON_RENDERERS?.localLandingOpportunities;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
 
     // [lot2:localPresenceOptimizer]
 
@@ -65689,6 +65699,9 @@ window.fpOpenAgencyPortfolioPriorities = function () {
 };
 
 // [lot2:localLandingOpportunities]
+window.fpOpenLocalLandingOpportunities = function () {
+  window.navigate('local-landing-opportunities');
+};
 
 // [lot2:localPresenceOptimizer]
 

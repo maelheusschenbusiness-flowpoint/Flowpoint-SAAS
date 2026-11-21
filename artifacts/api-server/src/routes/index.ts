@@ -71,6 +71,7 @@ import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.j
 import agencyPortfolioPrioritiesRouter from "./agency-portfolio-priorities.js";
 
 // [lot2:localLandingOpportunities:import]
+import localLandingOpportunitiesRouter from "./local-landing-opportunities.js";
 
 // [lot2:localPresenceOptimizer:import]
 
@@ -284,6 +285,7 @@ router.use(conversionOpportunityEngineRouter);
 router.use(agencyPortfolioPrioritiesRouter);
 
 // [lot2:localLandingOpportunities]
+router.use(localLandingOpportunitiesRouter);
 
 // [lot2:localPresenceOptimizer]
 
