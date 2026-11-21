@@ -216,7 +216,7 @@
 .fp-audit__report-foot { display: flex; align-items: flex-start; gap: 7px; margin: 0; padding: 0 clamp(20px, 4vw, 31px) 20px; color: #8293ac; font-size: 8px; }
 .fp-audit__report-foot svg { flex: none; color: #8ea8e8; }
 
-.fp-audit :is(button, a, input, summary):focus-visible { outline: 2px solid #9bb6ff; outline-offset: 3px; }
+.fp-audit :is(button, a, summary):focus-visible { outline: 2px solid #9bb6ff; outline-offset: 3px; }
 
 @keyframes fp-audit-pulse {
   50% { transform: scale(.82); opacity: .62; }
