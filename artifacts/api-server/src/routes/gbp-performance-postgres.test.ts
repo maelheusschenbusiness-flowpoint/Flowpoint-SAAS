@@ -84,6 +84,10 @@ function makeApp(orgId: string | null = orgA, role = "owner") {
       Object.assign(req, {
         orgContext: { orgId, role, userId: `qa-user-${orgId}` },
         orgId,
+        // La route lit via `req.orgDb` (contexte tenant). Cette suite valide le SQL et
+        // les filtres `org_id` sur la base reelle ; l'isolation par role + RLS
+        // (SET LOCAL ROLE app_user) est prouvee dans docs/CERTIFICATION-LOT2-CORRECTIONS.
+        orgDb: (sql: string, values?: unknown[]) => pool.query(sql, values),
       });
     }
     next();
