@@ -24,7 +24,7 @@ describe("Agency Portfolio Priorities", () => {
       site({ siteId: "critical", domain: "critical.test", criticalIssues: 2 }),
     ]);
     expect(result.map(item => item.siteId)).toEqual(["critical", "drop", "stable"]);
-    expect(result[0].reasons).toContain("2 critical technical issues");
+    expect(result[0].reasons).toContain("2 technical issues flagged by the latest audit");
     expect(result[1].reasons).toContain("SEO score fell by 7 points");
   });
 

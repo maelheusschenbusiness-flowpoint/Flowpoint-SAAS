@@ -49,11 +49,29 @@ router.put("/local-presence/settings", canWrite, async (req, res) => {
   const id = orgId(req);
   const db = query(req);
   if (!id || !db) { res.status(401).json({ error: "Contexte d’organisation requis." }); return; }
-  const body = req.body as { locationId?: unknown; trackedFields?: unknown };
-  const locationId = typeof body.locationId === "string" ? body.locationId : null;
-  const allowed = new Set(LOCAL_PRESENCE_FIELDS.map(field => field.key));
-  const trackedFields = Array.isArray(body.trackedFields)
-    ? [...new Set(body.trackedFields.filter((key): key is LocalPresenceFieldKey => typeof key === "string" && allowed.has(key as LocalPresenceFieldKey)))]
+  const body = (req.body ?? {}) as { locationId?: unknown; trackedFields?: unknown };
+  if (body.locationId !== undefined && body.locationId !== null && typeof body.locationId !== "string") {
+    res.status(400).json({ error: "Identifiant de fiche GBP invalide.", code: "INVALID_LOCATION_ID" }); return;
+  }
+  const locationId = typeof body.locationId === "string" && body.locationId ? body.locationId : null;
+  const allowed = new Set<string>(LOCAL_PRESENCE_FIELDS.map(field => field.key));
+  // Un critere inconnu est refuse explicitement : l'ecarter en silence enregistrait
+  // des reglages differents de ceux demandes (ex. « website » ignore).
+  if (body.trackedFields !== undefined) {
+    const bad = !Array.isArray(body.trackedFields)
+      ? ["trackedFields"]
+      : body.trackedFields.filter(key => typeof key !== "string" || !allowed.has(key)).map(key => String(key));
+    if (bad.length) {
+      res.status(400).json({
+        error: `Critère(s) de présence inconnu(s) : ${bad.join(", ")}.`,
+        code: "INVALID_TRACKED_FIELDS",
+        allowed: [...allowed],
+      });
+      return;
+    }
+  }
+  const trackedFields: LocalPresenceFieldKey[] = Array.isArray(body.trackedFields)
+    ? [...new Set(body.trackedFields as LocalPresenceFieldKey[])]
     : LOCAL_PRESENCE_FIELDS.map(field => field.key);
   if (!trackedFields.length || trackedFields.length > LOCAL_PRESENCE_FIELDS.length) {
     res.status(400).json({ error: "Sélectionnez au moins un critère de présence." }); return;

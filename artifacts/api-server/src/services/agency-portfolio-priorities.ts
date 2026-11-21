@@ -29,7 +29,7 @@ export function rankAgencyPortfolioPriorities(sites: PortfolioSiteSnapshot[]): P
 
     const scoreChange = site.previousScore === null ? null : site.currentScore - site.previousScore;
     const reasons: string[] = [];
-    if (site.criticalIssues > 0) reasons.push(`${site.criticalIssues} critical technical issues`);
+    if (site.criticalIssues > 0) reasons.push(`${site.criticalIssues} technical issues flagged by the latest audit`);
     if (scoreChange !== null && scoreChange <= -5) reasons.push(`SEO score fell by ${Math.abs(scoreChange)} points`);
     if (site.currentScore <= 60) reasons.push(`current SEO score is ${site.currentScore}/100`);
 
