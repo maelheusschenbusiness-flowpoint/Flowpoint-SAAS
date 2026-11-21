@@ -77,6 +77,7 @@ import localLandingOpportunitiesRouter from "./local-landing-opportunities.js";
 import localPresenceOptimizerRouter from "./local-presence-optimizer.js";
 
 // [lot2:gbpPerformanceLeads:import]
+import gbpPerformanceRouter from "./gbp-performance.js";
 
 import securityRouter from "./security.js";
 import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
@@ -292,5 +293,6 @@ router.use(localLandingOpportunitiesRouter);
 router.use(localPresenceOptimizerRouter);
 
 // [lot2:gbpPerformanceLeads]
+router.use(gbpPerformanceRouter);
 
 export default router;

@@ -2324,6 +2324,14 @@ export async function initDataTables(): Promise<void> {
     await applyTenantRls("local_presence_settings");
 
     // [lot2:gbpPerformanceLeads]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS gbp_performance_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{"locationId":null,"periodDays":30,"goals":{},"alertDropPercent":20}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("gbp_performance_settings");
 
     if (!await hasMigration("missing-production-tables-v3")) {
       // Supersede v1 and v2 (v2 had wrong schemas + FORCE RLS for raw-pool services)
@@ -3073,6 +3081,8 @@ export async function initDataTables(): Promise<void> {
       "gbp_posts","dataforseo_quota","roles","gsc_sites","reviews","crm_sync_logs",
       "automation_templates","local_heatmaps","login_audits","crm_integrations",
       "google_locations","org_auth_config","google_accounts","sso_providers","ga4_properties",
+      // Lot 2 : routes/gbp-performance.ts lit et ecrit gbp_performance_settings via pool.query() brut.
+      "gbp_performance_settings",
     ]) {
       await run(client, `ALTER TABLE "${_t}" ENABLE ROW LEVEL SECURITY`);
       await run(client, `ALTER TABLE "${_t}" NO FORCE ROW LEVEL SECURITY`);

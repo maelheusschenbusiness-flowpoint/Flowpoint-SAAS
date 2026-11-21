@@ -124,6 +124,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   localPresenceOptimizer: { icon: "📍", unit: "optimisation fiches GBP" },
 
   // [lot2:gbpPerformanceLeads]
+  gbpPerformanceLeads: { icon: "📊", unit: "performance GBP" },
 };
 
 export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {

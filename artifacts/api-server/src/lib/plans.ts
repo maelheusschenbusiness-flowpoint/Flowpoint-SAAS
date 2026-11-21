@@ -702,6 +702,11 @@ PRICE_GATED_ADDONS["localPresenceOptimizer"] = {
 };
 
 // [lot2:gbpPerformanceLeads]
+PRICE_GATED_ADDONS["gbpPerformanceLeads"] = {
+  definition: { name: "GBP Performance & Leads", category: "Local SEO", description: "Performances GBP réelles, objectifs configurables et alertes de baisse des actions locales.", priceEur: 15, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_GBP_PERFORMANCE_LEADS",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE"],
+};
 
 function isStripeTestModeActive(): boolean {
   if (process.env["STRIPE_TEST_MODE"] !== "true") return false;

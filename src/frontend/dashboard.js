@@ -10175,6 +10175,7 @@ function renderBilling() {
       { key:'localPresenceOptimizer', gated:true, openFn:'fpOpenLocalPresenceOptimizer', cat:'Local SEO', name:'Local Presence Optimizer', icon:'📍', color:'#22c55e', active:!!(me.addons?.localPresenceOptimizer), tag:'GBP', roi:'Informations de fiches à compléter', desc:'Priorisez les informations manquantes ou incomplètes sur vos fiches Google Business Profile.', features:['État de complétude des fiches','Priorités fondées sur les données disponibles','Recommandations par établissement'] },
 
       // [lot2:gbpPerformanceLeads]
+      { key:'gbpPerformanceLeads', gated:true, openFn:'fpOpenGbpPerformanceLeads', cat:'Local SEO', name:'GBP Performance & Leads', icon:'📊', color:'#22c55e', active:!!(me.addons?.gbpPerformanceLeads), tag:'GBP', roi:'Performances et objectifs locaux mesurés', desc:'Suivez les performances réelles de vos fiches Google Business Profile, définissez des objectifs et repérez les baisses d’actions locales.', features:['Statistiques GBP réellement disponibles','Objectifs configurables','Alertes de baisse des actions locales'] },
 
       // ── Conversion ──
       { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'+28% taux conversion',    desc:'Stratégiste CRO IA. Recommandations de tests A/B, friction analysis, et UX scoring.', features:['Score UX friction par page automatique','Hypothèses A/B générées par IA','Plan d\'action conversion priorisé','Analyse parcours utilisateur IA','Rapport ROI conversion mensuel'] },
@@ -15967,6 +15968,7 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
   'local-presence-optimizer',
 
   // [lot2:gbpPerformanceLeads]
+  'gbp-performance-leads',
 ]);
 function _doRender() {
   const page = $('#fp-page');
@@ -16210,6 +16212,14 @@ function _doRender() {
       break;
 
     // [lot2:gbpPerformanceLeads]
+    case 'gbp-performance-leads':
+      html = '<div id="fp-addon-gbp-performance-leads"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-gbp-performance-leads');
+        const renderAddon = window.FP_ADDON_RENDERERS?.gbpPerformanceLeads;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
     case 'data-explorer':  html = renderDataExplorer(); break;
@@ -65648,6 +65658,9 @@ window.fpOpenLocalPresenceOptimizer = function () {
 };
 
 // [lot2:gbpPerformanceLeads]
+window.fpOpenGbpPerformanceLeads = function () {
+  window.navigate('gbp-performance-leads');
+};
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 

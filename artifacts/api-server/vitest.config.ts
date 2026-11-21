@@ -112,6 +112,11 @@ export default defineConfig({
       "src/lib/addon-local-presence-optimizer-gate.test.ts",
 
       // [lot2:gbpPerformanceLeads]
+      "src/routes/gbp-performance.test.ts",
+      "src/routes/gbp-performance-postgres.test.ts",
+      "src/services/gbp-performance-addon.test.ts",
+      "src/services/gbp-performance-api.test.ts",
+      "src/lib/addon-gbp-performance-leads-gate.test.ts",
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",
