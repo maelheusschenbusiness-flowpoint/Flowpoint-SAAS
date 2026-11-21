@@ -1,0 +1,47 @@
+.fp2-explorer { --signal-accent:#9bb8ff; scroll-margin-top:100px; }
+.fp2-explorer[data-signal="1"] { --signal-accent:#77d5c7; }
+.fp2-explorer[data-signal="2"] { --signal-accent:#d4b5f5; }
+.fp2-explorer .fp2-source-button[aria-selected="true"] { border-color:var(--signal-accent); }
+.fp2-explorer .fp2-signal-chart-panel { min-height:344px; }
+.fp2-explorer .fp2-chart-heading h3 { font-size:18px; }
+.fp2-explorer .fp2-demo-pill { color:var(--signal-accent); }
+.fp2-explorer-visual { min-height:274px; padding-top:22px; }
+.fp2-explorer-kicker { display:flex; justify-content:space-between; align-items:center; color:#99aecf; font:9px "DM Mono",monospace; margin-bottom:13px; }
+.fp2-explorer-kicker b { color:var(--signal-accent); font-size:11px; font-weight:500; }
+.fp2-visibility-grid { display:grid; grid-template-columns:repeat(9,1fr); gap:5px; }
+.fp2-visibility-grid button { height:30px; border-radius:5px; color:#dce8ff; font:10px "DM Mono",monospace; cursor:pointer; border:1px solid transparent; background:#283c61; }
+.fp2-visibility-grid button[data-rank="high"] { background:#6082c4; color:#f4f7ff; }
+.fp2-visibility-grid button[data-rank="mid"] { background:#3d5a8b; }
+.fp2-visibility-grid button[aria-pressed="true"] { outline:2px solid #d7e4ff; outline-offset:2px; }
+.fp2-grid-detail { display:flex; justify-content:space-between; color:#a9bcda; font-size:10px; margin-top:15px; gap:12px; }
+.fp2-grid-detail b { color:#dfebff; font-weight:500; }
+.fp2-grid-legend { display:flex; align-items:center; gap:6px; color:#8fa5c8; font-size:9px; margin-top:15px; }
+.fp2-grid-legend i { width:12px; height:7px; border-radius:2px; background:#6082c4; }
+.fp2-grid-legend i:nth-of-type(2) { background:#3d5a8b; }
+.fp2-grid-legend i:nth-of-type(3) { background:#283c61; }
+.fp2-service-summary { display:flex; align-items:center; gap:16px; padding-bottom:16px; border-bottom:1px solid #2b405c; }
+.fp2-health-ring { width:76px;height:76px;border-radius:50%;background:conic-gradient(#77d5c7 0 340deg,#29454c 340deg 360deg);display:grid;place-items:center;position:relative;flex:none; }
+.fp2-health-ring:before { content:"";position:absolute;inset:6px;border-radius:50%;background:#122039; }
+.fp2-health-ring b { position:relative;font-size:23px;letter-spacing:-1px;color:#b1ece2; }
+.fp2-service-summary strong { color:#c0e9e3;font-size:12px;display:block; }
+.fp2-service-summary small { display:block;color:#95adbd;font-size:10px;line-height:1.7;margin-top:5px; }
+.fp2-service-row { display:grid;grid-template-columns:90px 1fr 43px;align-items:center;gap:9px;margin-top:15px;font-size:10px;color:#adc1d3; }
+.fp2-uptime-track { display:flex;gap:3px;height:19px; }
+.fp2-uptime-track i { flex:1;background:#477e79;border-radius:2px; }
+.fp2-uptime-track i.warning { background:#d5ad73; }
+.fp2-service-row b { font:9px "DM Mono",monospace;text-align:right;color:#a8e5d9; }
+.fp2-service-foot { display:flex;align-items:center;gap:6px;margin-top:17px;color:#c8b18b;font-size:10px; }
+.fp2-funnel-step { margin-bottom:12px; }
+.fp2-funnel-step > div:first-child { display:flex;justify-content:space-between;color:#bdc9df;font-size:10px;margin-bottom:6px; }
+.fp2-funnel-step strong { color:#e1d1f6;font:11px "DM Mono",monospace; }
+.fp2-funnel-bar { height:26px;border-radius:4px;background:#26324d;overflow:hidden; }
+.fp2-funnel-bar i { display:block;height:100%;border-radius:4px;background:#9b82c1;transform-origin:left;animation:fp2-explorer-enter .7s ease both; }
+.fp2-funnel-step:nth-child(2) .fp2-funnel-bar i { background:#b097d1; }
+.fp2-funnel-step:nth-child(3) .fp2-funnel-bar i { background:#d0b8ec; }
+.fp2-funnel-summary { display:flex;justify-content:space-between;align-items:center;border-top:1px solid #38415b;padding-top:12px;margin-top:17px;color:#aebbd3;font-size:10px; }
+.fp2-funnel-summary b { color:#dfc8f6;font:19px "DM Mono",monospace; }
+.fp2-technical-icon > .lucide-zap { display:none; }
+.fp2-technical-icon > .lucide-workflow { width:25px;height:25px;color:#dc2626; }
+@keyframes fp2-explorer-enter { from {transform:scaleX(.15);opacity:0} to {transform:scaleX(1);opacity:1} }
+@media(prefers-reduced-motion:reduce) { .fp2-funnel-bar i {animation:none} }
+@media(max-width:767px) { .fp2-explorer .fp2-signal-chart-panel {min-height:340px}.fp2-visibility-grid {gap:4px}.fp2-visibility-grid button {font-size:9px}.fp2-grid-detail {font-size:9px}.fp2-explorer .fp2-chart-heading h3 {font-size:17px} }

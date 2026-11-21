@@ -1,0 +1,12 @@
+{
+  "name": "FlowPoint",
+  "short_name": "FlowPoint",
+  "description": "SEO · Monitoring · Local SEO · IA",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0b1120",
+  "theme_color": "#2563EB",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

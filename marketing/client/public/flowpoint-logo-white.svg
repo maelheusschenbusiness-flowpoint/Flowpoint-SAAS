@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 204 44" width="204" height="44">
+  <!-- Fond icône semi-transparent pour version dark -->
+  <rect x="0" y="2" width="40" height="40" rx="8" ry="8" fill="white" fill-opacity="0.15"/>
+
+  <!-- Icône Zap (Lucide) -->
+  <g transform="translate(8, 10)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+  </g>
+
+  <!-- Texte blanc -->
+  <text
+    x="52"
+    y="31"
+    font-family="Outfit, 'Plus Jakarta Sans', -apple-system, sans-serif"
+    font-size="24"
+    font-weight="700"
+    fill="white"
+    letter-spacing="-0.6"
+  >Flowpoint</text>
+</svg>

@@ -1,0 +1,33 @@
+# FlowPoint
+
+> FlowPoint is a digital-growth SaaS workspace connecting SEO analysis, local search, competitor insights, website monitoring, analytics, reporting, and AI-supported recommendations for businesses and their teams.
+
+## Main pages
+
+- [Home](https://flowpoint.pro/): Platform overview
+- [Features](https://flowpoint.pro/features): Product capabilities and dashboard previews
+- [Pricing](https://flowpoint.pro/pricing): Plans and pricing details
+- [Benefits](https://flowpoint.pro/benefits): Product benefits
+- [About](https://flowpoint.pro/about): Company information and mission
+- [Contact](https://flowpoint.pro/contact): Contact form and support details
+- [Updates](https://flowpoint.pro/updates): Product changes and improvements
+- [Careers](https://flowpoint.pro/careers): Open positions
+
+## Product pages
+
+- [SEO audit](https://flowpoint.pro/seo-audit): Website analysis and prioritized search optimization opportunities
+- [Local SEO](https://flowpoint.pro/local-seo): Local visibility and geographic search tracking
+- [Website monitoring](https://flowpoint.pro/website-monitoring): Availability, performance and technical monitoring
+- [SEO reporting](https://flowpoint.pro/seo-reporting): Clear reports for reviewing SEO performance and next steps
+- [Competitor analysis](https://flowpoint.pro/competitor-analysis): Search competitor comparisons and opportunity discovery
+- [Resources](https://flowpoint.pro/resources): Guides and practical digital-growth content
+
+## Legal information
+
+- [Legal notice](https://flowpoint.pro/legal-notice)
+- [Legal information](https://flowpoint.pro/legal-information)
+
+## Contact
+
+- Email: support@flowpoint.pro
+- Application: https://app.flowpoint.pro/login.html

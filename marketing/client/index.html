@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>FlowPoint | Digital Growth Workspace</title>
+    <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.png?v=2" type="image/png" sizes="128x128" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" sizes="180x180" />
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" /></noscript>
+    <style>
+      #root:empty {
+        min-height: 100vh;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 12px;
+        background: #f1f5ff;
+      }
+      #root:empty::before {
+        content: 'F';
+        display: grid;
+        width: 40px;
+        height: 40px;
+        place-items: center;
+        border-radius: 11px;
+        color: #fff;
+        background: #315de8;
+        font: 700 24px Outfit, sans-serif;
+      }
+      #root:empty::after {
+        content: 'FlowPoint';
+        color: #475569;
+        font: 600 13px "Plus Jakarta Sans", sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        #root:empty { background: #111b2d; }
+        #root:empty::after { color: #e2e8f0; }
+      }
+    </style>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://flowpoint.pro/#website",
+          "url": "https://flowpoint.pro/",
+          "name": "FlowPoint",
+          "description": "FlowPoint is a SaaS workspace for SEO, local search, competitor analysis, website monitoring, analytics, reporting and AI-supported recommendations for teams.",
+          "inLanguage": "en"
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://flowpoint.pro/#organization",
+          "name": "FlowPoint",
+          "url": "https://flowpoint.pro/",
+          "logo": "https://flowpoint.pro/favicon.svg?v=2",
+          "email": "support@flowpoint.pro",
+          "vatID": "BE1038.273.845",
+          "description": "FlowPoint is a SaaS workspace for SEO, local search, competitor analysis, website monitoring, analytics, reporting and AI-supported recommendations for teams.",
+          "sameAs": [
+            "https://www.instagram.com/flowpoint.pro/",
+            "https://www.tiktok.com/@flowpoint.pro"
+          ]
+        }
+      ]
+    }
+    </script>
+  </head>
+  <body>
+    <script>
+      (function() {
+        try {
+          var supportedLanguages = [
+            "en", "fr", "es", "de", "it", "pt", "nl", "pl", "ru", "uk",
+            "cs", "ro", "hu", "sv", "da", "no", "fi", "el", "tr", "ar",
+            "he", "hi", "zh-CN", "zh-TW", "ja", "ko", "th", "vi", "id", "ms"
+          ];
+          var sourceLanguage = "en";
+          var cookieMatch = document.cookie.match(
+            new RegExp("(?:^|;\\s*)googtrans=/" + sourceLanguage + "/([^;]+)", "i")
+          );
+          var queryLanguage = new URLSearchParams(window.location.search).get("lang");
+          var requestedLanguage = supportedLanguages.find(function(code) {
+            return queryLanguage && code.toLowerCase() === queryLanguage.toLowerCase();
+          });
+          var cookieLanguage = supportedLanguages.find(function(code) {
+            return cookieMatch && code.toLowerCase() === cookieMatch[1].toLowerCase();
+          });
+          var language = requestedLanguage || cookieLanguage || "en";
+          document.documentElement.lang = language;
+          document.documentElement.dir = ["ar", "he"].includes(language.toLowerCase()) ? "rtl" : "ltr";
+          document.documentElement.dataset.language = language;
+          document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; SameSite=Lax";
+          document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; domain=" + window.location.hostname + "; SameSite=Lax";
+        } catch (e) {}
+      })();
+    </script>
+    <script>
+      (function() {
+        try {
+          if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch(e) {}
+      })();
+    </script>
+    <div id="google_translate_element" style="display:none"></div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script type="text/javascript">
+      function googleTranslateElementInit() {
+        var sourceLanguage = "en";
+        new google.translate.TranslateElement({
+          pageLanguage: sourceLanguage,
+          includedLanguages: 'en,fr,es,de,it,pt,nl,pl,ru,uk,cs,ro,hu,sv,da,no,fi,el,tr,ar,he,hi,zh-CN,zh-TW,ja,ko,th,vi,id,ms',
+          autoDisplay: false
+        }, 'google_translate_element');
+      }
+    </script>
+  </body>
+</html>

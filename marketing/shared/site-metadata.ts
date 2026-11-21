@@ -1,0 +1,1 @@
+export const HOME_PAGE_TITLE = "FlowPoint | Digital Growth Workspace";

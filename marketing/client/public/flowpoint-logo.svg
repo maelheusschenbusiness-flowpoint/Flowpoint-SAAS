@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 204 44" width="204" height="44">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fond icône : 40×40, border-radius 8px (rounded-lg), centré verticalement -->
+  <rect x="0" y="2" width="40" height="40" rx="8" ry="8" fill="url(#g)"/>
+
+  <!-- Icône Zap (Lucide) — viewBox 0 0 24 24, translaté au centre du carré avec padding 8px -->
+  <g transform="translate(8, 10)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+  </g>
+
+  <!-- Texte Flowpoint : font-display bold, tracking-tight, slate-900 -->
+  <text
+    x="52"
+    y="31"
+    font-family="Outfit, 'Plus Jakarta Sans', -apple-system, sans-serif"
+    font-size="24"
+    font-weight="700"
+    fill="#0F172A"
+    letter-spacing="-0.6"
+  >Flowpoint</text>
+</svg>

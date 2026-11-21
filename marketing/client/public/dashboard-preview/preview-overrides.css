@@ -1,0 +1,47 @@
+.fp-notif-badge,
+.fp-notif-dot,
+#fp-notif-badge,
+#fp-msg-badge,
+#fp-activity-badge,
+#fp-toast-container,
+#topbar-status {
+  display: none !important;
+}
+
+/* Keep the fallback translator's toolbar out of the embedded dashboard preview. */
+.goog-te-banner-frame,
+.goog-te-menu-frame,
+.goog-te-balloon-frame,
+#goog-gt-tt,
+.goog-te-spinner-pos,
+.goog-te-spinner,
+.goog-te-spinner-img,
+.goog-te-gadget-icon,
+iframe.goog-te-banner-frame,
+iframe.goog-te-menu-frame,
+iframe.goog-te-balloon-frame,
+.goog-tooltip,
+.goog-tooltip-content,
+body > .skiptranslate,
+#google_translate_element {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.goog-text-highlight,
+font[style*="vertical-align: inherit"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  text-decoration: none !important;
+}
+
+body {
+  top: 0 !important;
+  position: static !important;
+}
+
+.skiptranslate {
+  display: none !important;
+}
