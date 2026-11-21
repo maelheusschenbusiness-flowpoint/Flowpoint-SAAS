@@ -64,6 +64,7 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   keywordDomination:     { icon: "🎯", unit: "domination mots-clés" },
   backlinkIntelligence:  { icon: "🔗", unit: "backlinks IA"         },
   aiContentStrategist:   { icon: "✍️",  unit: "IA contenu"           },
+  seoContentDecayRadar:  { icon: "📉",  unit: "Content Decay"        },
   seoChangeImpact:       { icon: "↕️", unit: "impact SEO mesuré"     },
   technicalSeoFixVerification: { icon: "🛠️", unit: "vérification corrective" },
   organicCampaignTracker: { icon: "🎯", unit: "suivi de campagne"    },

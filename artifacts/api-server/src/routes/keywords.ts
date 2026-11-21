@@ -19,7 +19,7 @@ import { buildKeywordDominationReport } from "../services/keyword-domination.js"
 import { queryInt } from "../lib/query-params.js";
 
 const router = Router();
-const contentDecayGate = requireAddon("aiContentStrategist", "SEO Content Decay Radar");
+const contentDecayGate = requireAddon("seoContentDecayRadar", "SEO Content Decay Radar");
 
 type OrgReq = import("express").Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
 

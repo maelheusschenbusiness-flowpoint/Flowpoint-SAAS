@@ -208,12 +208,12 @@ describe("add-on catalogue UI commercial gates", () => {
     );
   });
 
-  it("keeps the UI button and backend authorization aligned for all 32 non-protected add-ons on all plans", () => {
+  it("keeps the UI button and backend authorization aligned for all 33 non-protected add-ons on all plans", () => {
     const plans = ["standard", "pro", "ultra"] as const;
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
-    expect(keys).toHaveLength(32);
+    expect(keys).toHaveLength(33);
 
     for (const key of keys) {
       const removed = REMOVED_ADDONS.has(key) || RETIRED_ADDONS.has(key);
@@ -274,7 +274,7 @@ describe("add-on catalogue UI commercial gates", () => {
       addon.key,
       addon,
     ]));
-    expect(entries.size).toBe(35);
+    expect(entries.size).toBe(36);
     const billingPlansById = new Map(
       ADDON_CATALOG.map(addon => [addon.id, addon.allowedPlans]),
     );
@@ -287,7 +287,7 @@ describe("add-on catalogue UI commercial gates", () => {
     const keys = Object.keys(ADDON_DEFINITIONS).filter(
       key => !PROTECTED_ADDON_KEYS.has(key) && !RETIRED_ADDONS.has(key),
     );
-    expect(keys).toHaveLength(32);
+    expect(keys).toHaveLength(33);
     expect(entries.has("prioritySupport")).toBe(false);
 
     for (const key of keys) {
@@ -378,7 +378,7 @@ describe("add-on catalogue UI commercial gates", () => {
     }
 
     const publicBillingIds = new Set(ADDON_CATALOG.map(addon => addon.id));
-    expect(ADDON_CATALOG).toHaveLength(35);
+    expect(ADDON_CATALOG).toHaveLength(36);
     for (const key of retired) expect(publicBillingIds.has(key)).toBe(false);
     for (const [key] of replacements) expect(publicBillingIds.has(key)).toBe(true);
   });
@@ -387,7 +387,7 @@ describe("add-on catalogue UI commercial gates", () => {
     const match = dashboard.match(/const allAddons = \[([\s\S]*?)\n\s*\];/);
     expect(match, "add-on card definitions should be present").not.toBeNull();
     const keys = [...(match?.[1] ?? "").matchAll(/key:\s*'([^']+)'/g)].map(item => item[1]);
-    expect(keys).toHaveLength(32);
+    expect(keys).toHaveLength(33);
     expect(new Set(keys).size).toBe(keys.length);
     expect(exportedDashboard).toBe(dashboard);
     const monthlyCatalogKeys = Object.entries(ADDON_DEFINITIONS)
