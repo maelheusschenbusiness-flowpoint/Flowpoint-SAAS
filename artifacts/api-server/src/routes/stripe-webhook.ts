@@ -2620,7 +2620,8 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // customer.subscription.* events own that state. Only a real payment
       // (first charge after trial, renewal, past_due recovery) confirms `active`.
       const _invAmountPaid  = Number(obj["amount_paid"] || 0);
-      if (_invAmountPaid > 0) {
+      // Une facture d'add-on payee ne confirme pas l'abonnement principal (il peut etre en essai).
+      if (_invAmountPaid > 0 && !isAddonInvoice(obj)) {
         await persistSubscriptionMeta({ orgId, subscriptionStatus: "active" });
       } else {
         logger.info({ orgId, billingReason: obj["billing_reason"] },
