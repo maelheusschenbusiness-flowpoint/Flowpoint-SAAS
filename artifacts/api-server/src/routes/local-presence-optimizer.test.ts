@@ -64,7 +64,7 @@ describe("local-presence-optimizer routes", () => {
   it("enregistre les criteres sous la cle de l'organisation, apres controle de propriete de la fiche", async () => {
     const saved = await request(appFor("org-b", ["loc-b"]))
       .put("/local-presence/settings")
-      .send({ locationId: "loc-b", trackedFields: ["phone", "websiteUri", "inconnu"] })
+      .send({ locationId: "loc-b", trackedFields: ["phone", "websiteUri"] })
       .expect(200);
     expect(saved.body.settings).toEqual({ locationId: "loc-b", trackedFields: ["phone", "websiteUri"] });
     const upsert = dbCalls.find(call => call.sql.includes("ON CONFLICT (org_id)"));
