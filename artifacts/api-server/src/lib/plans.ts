@@ -167,6 +167,13 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     customDomain:         process.env["STRIPE_TEST_PRICE_ID_ADDON_CD"]          ?? "",
     extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
     gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
+    // Paquets de capacite : sans surcharge TEST, le mode TEST retombait sur l'id LIVE (refus Stripe).
+    auditsPack200:        process.env["STRIPE_TEST_PRICE_ID_ADDON_AUDITS200"]    ?? "",
+    auditsPack1000:       process.env["STRIPE_TEST_PRICE_ID_ADDON_AUDITS1000"]   ?? "",
+    pdfPack200:           process.env["STRIPE_TEST_PRICE_ID_ADDON_PDF200"]       ?? "",
+    exportsPack1000:      process.env["STRIPE_TEST_PRICE_ID_ADDON_EXPORTS1000"]  ?? "",
+    localDominationMaps:  process.env["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_DOMINATION_MAPS"] ?? "",
+    zapierIntegration:    process.env["STRIPE_TEST_PRICE_ID_ADDON_ZAPIER"]       ?? "",
     aiCreditsPack50k:     process.env["STRIPE_TEST_PRICE_AI_50K"]               ?? "",
     aiCreditsPack200k:    process.env["STRIPE_TEST_PRICE_AI_200K"]              ?? "",
     aiCreditsPack500k:    process.env["STRIPE_TEST_PRICE_AI_500K"]              ?? "",
