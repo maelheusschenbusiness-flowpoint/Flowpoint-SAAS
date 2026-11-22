@@ -16,7 +16,13 @@ export class PublicAuditTargetError extends Error {
       | "too_many_redirects"
       | "timeout"
       | "response_too_large"
-      | "connection_failed",
+      | "connection_failed"
+      | "http_error"
+      | "empty_response"
+      | "unreadable_response"
+      | "crawler_blocked"
+      | "error_page",
+    public readonly httpStatus?: number,
   ) {
     super(code);
   }
@@ -256,6 +262,19 @@ function performRequest(
             ttfbMs,
             transferBytes: 0,
             location,
+          });
+          return;
+        }
+
+        if (maxBytes === 0) {
+          settled = true;
+          response.destroy();
+          resolve({
+            status,
+            headers: response.headers,
+            body: Buffer.alloc(0),
+            ttfbMs,
+            transferBytes: 0,
           });
           return;
         }
