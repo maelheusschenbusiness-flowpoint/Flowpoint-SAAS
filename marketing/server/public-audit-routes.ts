@@ -16,6 +16,10 @@ import {
   createPublicAuditReport,
   getPublicAuditFailureMessage,
 } from "./public-audit-report";
+import {
+  PublicAuditTargetError,
+  sanitizePublicAuditUrlForLog,
+} from "./public-audit-fetch";
 
 const ALLOWED_PUBLIC_ORIGINS = new Set([
   "https://flowpoint.pro",
@@ -136,6 +140,26 @@ function reportError(res: Response, error: unknown): void {
   });
 }
 
+function logTargetResponse(error: unknown): void {
+  if (!(error instanceof PublicAuditTargetError) || error.httpStatus === undefined) {
+    return;
+  }
+  const contentType = error.contentType
+    ?.replace(/[\u0000-\u001f\u007f]/g, " ")
+    .slice(0, 120);
+  console.warn(
+    "[public-audit] target response",
+    JSON.stringify({
+      code: error.code,
+      status: error.httpStatus,
+      finalUrl: error.finalUrl
+        ? sanitizePublicAuditUrlForLog(error.finalUrl)
+        : null,
+      contentType: contentType || null,
+    }),
+  );
+}
+
 export function registerPublicAuditRoutes(
   app: Express,
   options: PublicAuditRouteOptions = {},
@@ -205,6 +229,7 @@ export function registerPublicAuditRoutes(
         );
         if (!res.writableEnded) res.json(report);
       } catch (error) {
+        logTargetResponse(error);
         if (!res.writableEnded) {
           if (error instanceof PublicAuditUnavailableError) {
             reportError(res, error);

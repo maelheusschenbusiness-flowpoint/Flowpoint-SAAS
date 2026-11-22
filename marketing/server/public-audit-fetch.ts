@@ -18,11 +18,14 @@ export class PublicAuditTargetError extends Error {
       | "response_too_large"
       | "connection_failed"
       | "http_error"
+      | "hosting_placeholder"
       | "empty_response"
       | "unreadable_response"
       | "crawler_blocked"
       | "error_page",
     public readonly httpStatus?: number,
+    public readonly finalUrl?: string,
+    public readonly contentType?: string,
   ) {
     super(code);
   }
@@ -191,6 +194,23 @@ export function normalizePublicAuditUrl(input: string): URL {
   // The audit checks the public page path, not query-driven variants.
   url.search = "";
   return url;
+}
+
+export function sanitizePublicAuditUrlForLog(input: string): string | null {
+  let url: URL;
+  try {
+    url = normalizePublicAuditUrl(input);
+  } catch {
+    return null;
+  }
+
+  // URL path segments can contain names, identifiers, or one-time tokens.
+  const path = url.pathname
+    .split("/")
+    .map((segment) => (segment ? "[redacted]" : segment))
+    .join("/");
+
+  return `${url.origin}${path || "/"}`;
 }
 
 function performRequest(

@@ -345,6 +345,24 @@ function scanRobotsDisallow(body: Buffer): boolean | null {
   );
 }
 
+function isUnpublishedReplitPlaceholder(response: PublicFetchResult): boolean {
+  if (
+    response.status !== 404 ||
+    !responseContentType(response).includes("text/html")
+  ) {
+    return false;
+  }
+
+  const html = decompressText(response, 64 * 1024)?.slice(0, 32 * 1024);
+  if (html === undefined || html === null) return false;
+  const unpublishedTitle =
+    /<title\b[^>]*>\s*this app isn(?:&#0*39;|&#x0*27;|')t live yet\s*<\/title>/i.test(
+      html,
+    );
+  const replitMarker = /replit diatype|\/__replco\/static\//i.test(html);
+  return unpublishedTitle && replitMarker;
+}
+
 async function getPageSupportingData(
   pageUrl: string,
   root: HtmlNode,
@@ -522,7 +540,13 @@ export async function createPublicAuditReport(
   }
 
   if (page.status < 200 || page.status >= 300) {
-    throw new PublicAuditTargetError("http_error", page.status);
+    const contentType = header(page.headers, "content-type") ?? undefined;
+    throw new PublicAuditTargetError(
+      isUnpublishedReplitPlaceholder(page) ? "hosting_placeholder" : "http_error",
+      page.status,
+      page.finalUrl,
+      contentType,
+    );
   }
   if ([204, 205].includes(page.status)) {
     throw new PublicAuditTargetError("empty_response", page.status);
@@ -1676,6 +1700,8 @@ export function getPublicAuditFailureMessage(error: unknown): string {
       return "The page is too large for this free check.";
     case "http_error":
       return `The website returned HTTP ${error.httpStatus ?? "error"} instead of a successful page. Please try again when the page is available.`;
+    case "hosting_placeholder":
+      return `The website address is serving an unpublished hosting placeholder (HTTP ${error.httpStatus ?? 404}) instead of the requested page. Check that the domain points to a live site.`;
     case "empty_response":
       return `The website returned no HTML content${error.httpStatus ? ` (HTTP ${error.httpStatus})` : ""}. Please check that the address points to a page.`;
     case "unreadable_response":
