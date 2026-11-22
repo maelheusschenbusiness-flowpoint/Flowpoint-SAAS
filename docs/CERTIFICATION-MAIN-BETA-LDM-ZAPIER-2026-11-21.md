@@ -59,3 +59,24 @@ Le controle 2 est ainsi observe sur une organisation Standard (pas Pro, donc par
 
 ### Nettoyage du 22 nov
 Abonnement annule (`canceled`, `cancellation_requested`, 12:56Z) : `sub_1UeaAX9eqtbj6iPByfNCToAb` (plan Standard, org jetable). Aucun abonnement d'add-on cree. Clients TEST non supprimables : `cus_Vfw2aOPUJLgBy8` (Standard), `cus_Vfw12nHi3A1rBA` (Pro, org `7176f9ed-77dc-45bf-a82c-f0b60d8fbd7d`, sans abonnement), `cus_Vfw0nKJAHYhBMG` (Pro, org `f0f6f1ba-4294-45e9-9893-f3336e387682`, sans abonnement), plus ceux du 21 nov.
+
+## Relance du 22 nov, 13:19-13:25Z (commit `6885efbd`, `dep-dc1edvs3eqjs73ft3jd0`, 13:05Z) : inscription Pro REUSSIE, achat d'add-on en ECHEC (campagne arretee)
+
+Inscription Pro corrigee (carte 4242, essai) :
+| Etiquette | Org | Client | Abonnement plan (Stripe `trialing`, prix `price_1UQ53c9eqtbj6iPB4FVBZqzX` 7900) | DB avant achat |
+|---|---|---|---|---|
+| ldm (Pro) | `c72d7854-a4d1-4dff-9531-2664b0f3b7da` | `cus_VfwZ4VVEB4Txdg` | `sub_1UeagL9eqtbj6iPBILDrqI2y` | trialing, trial_ends_at 2026-12-06 13:19:49+00, current_period_end null, updated_at 13:19:51 |
+| zap (Pro) | `912f8c57-0a88-4702-b2cc-be4cf3ad3a49` | `cus_VfwZiSCrVkK8JL` | `sub_1Ueagb9eqtbj6iPBr6n0SBbY` | trialing, trial_ends_at 2026-12-06 13:20:05+00, current_period_end null, updated_at 13:20:07 |
+
+Controle 2 (402 avant achat), session magic-link + `login-verify`, 13:21:50-13:22:02Z : **REUSSI** pour les deux.
+- LDM : `GET /api/local-maps`, `/heatmaps`, `/competitors`, `/opportunities`, `/visibility-scores` : 402 `ADDON_REQUIRED` chacun.
+- Zapier/Make : `POST /integrations/zapier/connect`, `/make/connect`, `/integrations/connections` avec `zapier` puis `make` : 402 `ADDON_REQUIRED`.
+- Plateforme `slack` sur `/integrations/connections` (org Pro, 13:22:02Z) : **500** `null value in column "provider" of relation "automation_integrations" violates not-null constraint`. Confirme sur Pro ; observation (defaut possible de schema de la base de test, non bloquant).
+
+Controle 3 : **ECHEC**. 3 `POST /api/addons/localDominationMaps/activate` et 3 `POST /api/addons/zapierIntegration/activate` simultanes (13:22:05Z) : 6 reponses 502 `{"error":"La facturation Stripe de l'add-on a echoue - activation annulee","stripe":{"synced":false,"reason":"stripe_error"}}`. Journaux Render (13:22:10Z) : `[AddonSync] Stripe sync failed` -> `StripeInvalidRequestError`, `param: billing_cycle_anchor`, « The parameter `billing_cycle_anchor` expects a unix timestamp representing a date and time in the future. You specified the value `now` which is in the past. », pile `findOrCreateAddonSubscription (services/addon-stripe-sync.ts:118)` <- `syncAddonWithStripeUnlocked (:282)` ; cles d'idempotence `addon-sub:<org>:price_1UeLpi9eqtbj6iPB8Oqf7jj5` et `...:price_1UeLqd9eqtbj6iPBY74dnZAe`. Puis `[Addons] activation blocked - Stripe billing not secured`. Aucun abonnement d'add-on cree dans Stripe (liste des abonnements des deux clients : un seul, le plan) ; `org_addons` n'a aucune ligne `localDominationMaps` / `zapierIntegration` pour les deux orgs (activation correctement annulee, pas de droit accorde sans facturation).
+
+Controles 4 a 7 (droits avec add-on, plan inchange apres achat, concurrence a 3 appels avec un seul abonnement, deactivate puis annulation Stripe) : **NON VERIFIE** (aucun achat possible). Je n'ai pas cree l'abonnement d'add-on a la main dans Stripe : ce ne serait pas la preuve du produit.
+
+Defaut produit : `artifacts/api-server/src/services/addon-stripe-sync.ts` l.118-125 (`findOrCreateAddonSubscription`) passe `billing_cycle_anchor: "now"` a `stripe.subscriptions.create` ; l'API Stripe du compte TEST (abonnements en `billing_mode.type=flexible`) le refuse (la valeur `now` n'est acceptee qu'a la mise a jour, pas a la creation). Provoque le 502 sur tout achat d'add-on. Pistes : omettre le parametre (l'ancre par defaut est deja la creation) ou passer un timestamp.
+
+Nettoyage : abonnements de plan annules (`canceled`, `cancellation_requested`, 13:25Z) : `sub_1UeagL9eqtbj6iPBILDrqI2y`, `sub_1Ueagb9eqtbj6iPBr6n0SBbY`. Clients TEST non supprimables : `cus_VfwZ4VVEB4Txdg`, `cus_VfwZiSCrVkK8JL` (plus ceux des relances precedentes). Aucun abonnement d'add-on a annuler.
