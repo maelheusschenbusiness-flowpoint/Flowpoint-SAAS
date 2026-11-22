@@ -10,6 +10,7 @@ import { PUBLIC_AUDIT_CATEGORIES } from "@shared/public-audit";
 import {
   normalizePublicAuditUrl,
   PublicAuditTargetError,
+  sanitizePublicAuditUrlForLog,
   type PublicFetchOptions,
   type PublicFetchResult,
 } from "./public-audit-fetch";
@@ -405,6 +406,39 @@ test("an HTML 404 response fails clearly before generating a partial report", as
       getPublicAuditFailureMessage(error).includes("HTTP 404"),
   );
   assert.deepEqual(requests.map(({ url }) => new URL(url).pathname), ["/"]);
+});
+
+test("an unpublished Replit placeholder is identified without auditing its HTML", async () => {
+  const { fetcher, requests } = createFixtureFetcher({
+    pageStatus: 404,
+    finalUrl: "https://audit.example/",
+    html: `<!doctype html>
+      <html><head><title>This app isn&#39;t live yet</title></head>
+      <body><style>
+        @font-face { font-family: "Replit Diatype"; src: url("/__replco/static/fonts/example.woff2"); }
+      </style></body></html>`,
+  });
+
+  await assert.rejects(
+    () => createPublicAuditReport("https://audit.example/", quota, undefined, fetcher),
+    (error) =>
+      error instanceof PublicAuditTargetError &&
+      error.code === "hosting_placeholder" &&
+      error.httpStatus === 404 &&
+      error.finalUrl === "https://audit.example/" &&
+      error.contentType === "text/html; charset=utf-8" &&
+      getPublicAuditFailureMessage(error).includes("unpublished hosting placeholder"),
+  );
+  assert.deepEqual(requests.map(({ url }) => new URL(url).pathname), ["/"]);
+});
+
+test("audit log URLs omit queries and redact path segments", () => {
+  assert.equal(
+    sanitizePublicAuditUrlForLog(
+      "https://audit.example/users/person%40example.com/session/123456?access_token=private",
+    ),
+    "https://audit.example/[redacted]/[redacted]/[redacted]/[redacted]",
+  );
 });
 
 test("a successful response with an explicit crawler challenge fails clearly", async () => {
