@@ -74,6 +74,8 @@ export default defineConfig({
       "src/lib/addon-test-price-overrides.test.ts",
       // gsc_keyword_data creee hors du bloc v3 (absente de la production)
       "src/services/gsc-keyword-data-schema-db.test.ts",
+      // Local Domination Maps : local_opportunities / local_visibility_scores (absentes)
+      "src/services/local-maps-tables-db.test.ts",
       // [lot1:organicCampaignTracker]
       "src/routes/organic-campaign-tracker.test.ts",
       "src/services/organic-campaign-tracker.test.ts",
