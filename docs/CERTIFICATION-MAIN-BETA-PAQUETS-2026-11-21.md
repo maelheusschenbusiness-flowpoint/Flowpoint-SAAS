@@ -2,7 +2,10 @@
 
 Cible : `https://flowpoint-test.onrender.com` (service `srv-danup5egekts73a8og7g`) executant temporairement la branche `cert/flowpoint-797cd9f5-stripe-safe`, commit `78dc73d6`. Stripe : `acct_1StVIr9eqtbj6iPB`, `livemode:false` sur chaque objet touche. Base de test Supabase `rrjllaiodpvtsphrtdqd` en lecture seule (aucune insertion ; seule ecriture : consommation d'un jeton magic-link par `login-verify`). Aucune variable Render modifiee, production, LIVE et Flowpoint-Main non touches. Aucun secret affiche.
 
-## Verdict : campagne BLOQUEE, achats NON VERIFIES sur les 4 add-ons
+## Verdict final (22 novembre, commit 24a3c386) : controles 1 bis et 3 a 7 REUSSIS sur les 4 paquets ; historique des blocages ci-dessous
+Les sections suivantes conservent l'historique des campagnes bloquees (21 nov puis 22 nov, correctifs 6885efbd et 24a3c386) ; la section « Troisieme rejeu » fait foi.
+
+### Verdict de la premiere campagne (bloquee)
 Les 4 achats (`POST /api/addons/:key/activate`) ont echoue en **502 `stripe_error`** : l'environnement Flowpoint-Test n'a pas les identifiants de prix TEST des paquets, le code retombe sur les identifiants de prix LIVE et Stripe TEST les refuse (« No such price ... a similar object exists in live mode, but a test mode key was used »). Aucun objet LIVE n'a ete cree (refus cote Stripe), aucun droit n'a ete accorde (echec ferme), aucun abonnement d'add-on n'existe. Je n'ai pas contourne (variables Render et insertion en base interdites). Les controles 3 a 7 sont donc **NON VERIFIES** ; les prix TEST fournis n'ont pas pu etre exerces par l'application.
 
 ## Methode appliquee
@@ -97,6 +100,52 @@ Progres : le prix TEST est desormais utilise. Journal Render b200 (13:21:14Z) : 
 Resultat : controles 3, 4, 6, 7 **NON VERIFIES** (precondition impossible), controle 5 non exerce par un achat (plan `trialing` inchange). Arret.
 
 Nettoyage : abonnements de plan annules (13:24-13:25Z, `canceled`, `cancellation_requested`) `sub_1UeagF9eqtbj6iPBSWeWoR7o`, `sub_1UeagW9eqtbj6iPBkqsRKmmh`, `sub_1Ueagn9eqtbj6iPB5tRtJgDY`, `sub_1Ueah49eqtbj6iPB1fdAtOZ9`. Clients TEST non supprimables : `cus_VfwZUCxM1QSG0r`, `cus_VfwZvbJhkfBq8X`, `cus_VfwZPW0vvvAczg`, `cus_Vfwa0XcWx7avQK`. Aucun abonnement d'add-on, aucune facture payee, aucun objet LIVE.
+
+## Troisieme rejeu du 22 novembre apres le correctif `24a3c386` (`dep-dc1eqku0tbcc73akepa0`, live 13:29Z) : REUSSI sur les 4 paquets
+Plus de blocage : creation d'abonnement d'add-on sans ancre, `error_if_incomplete`, prix TEST. 4 organisations Standard fraiches (inscription navigateur 13:31-13:32Z), etat avant achat : `trialing`, current_period_end NULL, limites 30/30/30, aucun droit de paquet.
+
+| Etiquette | Org | Client | Abonnement plan | trial_ends_at / updated_at (avant et apres) |
+|---|---|---|---|---|
+| c200 (auditsPack200) | `e2e5db3c-c6f0-4641-a2b5-7b18d7e1de67` | `cus_Vfwke5rzT7e3dg` | `sub_1UearN9eqtbj6iPBjYeAuXvQ` | 2026-12-06 13:31:13+00 / 13:31:16.261077 |
+| c1000 (auditsPack1000) | `a98b99dc-9abc-418f-b0c3-c6fe4ed2553f` | `cus_VfwlpDu72x6QfQ` | `sub_1Uearf9eqtbj6iPBoMVZRi0c` | 13:31:31+00 / 13:31:32.9871 |
+| r200 (pdfPack200) | `4601e22b-181f-464f-aa53-ad0fe6fc5d6a` | `cus_Vfwls04iKblnrj` | `sub_1Uearv9eqtbj6iPBTJyRqgmt` | 13:31:47+00 / 13:31:49.647245 |
+| g1000 (exportsPack1000) | `2c827679-dff3-44e4-965f-443c34b978a6` | `cus_Vfwl3tb9MijhCo` | `sub_1UeasD9eqtbj6iPBY3p1wloH` | 13:32:04+00 / 13:32:07.022078 |
+
+### Controles 1 bis et 3 : achat quantite 1 (`POST /api/addons/:key/activate {quantity:1}`)
+| | c200 | c1000 | r200 | g1000 |
+|---|---|---|---|---|
+| Appel | 13:32:23Z 200 `item_added` | 13:32:46Z 200 `item_added` | 13:33:07Z 200 `item_added` | 13:33:29Z 200 `item_added` |
+| Abonnement d'add-on (`metadata.addonSub=true`, `orgId`) | `sub_1UeasZ9eqtbj6iPBDJownclP` active | `sub_1Ueasv9eqtbj6iPBfn9a2rrG` | `sub_1UeatH9eqtbj6iPBHximNIMK` | `sub_1Ueatd9eqtbj6iPBCb9Gf8VX` |
+| Item (prix TEST reel, EUR, mensuel, livemode false) | `si_VfwmVyMDLDR6rO` `price_1U4p1Z9eqtbj6iPBMK549pDG` 1200 | `si_VfwmU0cuZueL2K` `price_1U4p1Z9eqtbj6iPBiAru9aAj` 3900 | `si_VfwmgyzaKYAK8b` `price_1U4p1a9eqtbj6iPB6sfEvQxC` 1200 | `si_VfwnAbTQ5AcLu5` `price_1U4p1a9eqtbj6iPBw9O0eaJU` 1400 |
+| Facture | `in_1UeasZ9eqtbj6iPBbEhW2cya` | `in_1Ueasv9eqtbj6iPBI6UU9o6O` | `in_1UeatH9eqtbj6iPBHx1vs3fV` | `in_1Ueatd9eqtbj6iPB59L6D4TE` |
+| Webhooks `billing_events` (`processed`) | subscription.created 13:32:30, payment_intent.succeeded, invoice.payment_succeeded 13:32:30 montant 1200 | 13:32:52, montant 3900 | 13:33:14, montant 1200 | 13:33:36, montant 1400 |
+| `org_addons` | active, quantite 1 | idem | idem | idem |
+| Limite apres (API `/api/addons`, `/api/me`) | audits 30 -> **230** (+200) | audits 30 -> **1030** (+1000) | reports 30 -> **230** (+200), `/api/me` `usage.pdf.limit` 230 | exports 30 -> **1030** (+1000) |
+Les autres limites restent 30. Le controle 1 bis (prix TEST sur l'item d'un abonnement REEL) est **REUSSI** pour les 4. Le prix TEST de l'add-on est bien celui du catalogue.
+
+### Controle 4 : quantite 2 (`activate {quantity:2}`)
+13:33:46Z c200, 13:33:58Z c1000, 13:34:09Z r200, 13:34:21Z g1000 : 200 `quantity_updated` sur les 4. Stripe : UN seul abonnement d'add-on par client (le meme `sub_...` ; l'item garde son id, `quantity` 2), `customer.subscription.updated` traite (13:33:51, 13:34:02, 13:34:14, 13:34:25). `org_addons` quantite 2. Limites : audits 430 (30+2x200), audits 2030 (30+2x1000), reports 430 (`usage.pdf.limit` 430), exports 2030. **REUSSI** x4.
+
+### Controle 5 : abonnement principal inchange
+Apres achat, quantite 2, desactivation, reactivation et annulation Stripe, lecture base : `subscription_status` `trialing`, `stripe_subscription_id`, `trial_ends_at` et `updated_at` identiques a l'etat avant (voir tableau). Stripe : les 4 abonnements de plan restent `trialing` (trial_end inchange) jusqu'a leur annulation de nettoyage. **REUSSI** x4.
+
+### Controle 6 : 3 `POST /activate` simultanes (`Promise.all`, org fraiche d'add-on apres desactivation)
+c200 13:40:33Z, c1000 13:40:47Z, r200 13:41:01Z, g1000 13:41:15Z : pour chacun 3 reponses 200 = 1 `item_added` + 2 `already_on_subscription`. Stripe (`GetSubscriptions`) : exactement 1 abonnement d'add-on actif par client (`sub_1Ueb0T9eqtbj6iPBrgktURI4`, `sub_1Ueb0h9eqtbj6iPBFBVDXlXu`, `sub_1Ueb0v9eqtbj6iPBqhxBpANc`, `sub_1Ueb199eqtbj6iPBDED1DT95`), quantite 1, prix TEST, facture creee une seule fois (`in_1Ueb0T9eqtbj6iPBH2zoQVc7`, `in_1Ueb0h9eqtbj6iPBwD7A1e8b`, `in_1Ueb0v9eqtbj6iPBwpngxbEE`, `in_1Ueb199eqtbj6iPB8UB7z9HE`). Aucun doublon facture. **REUSSI** x4.
+
+### Controle 7a : desactivation par le produit (`POST /api/addons/:key/deactivate`)
+13:39:49Z c200, 13:39:59Z c1000, 13:40:09Z r200, 13:40:18Z g1000 : 200 `item_removed`. L'abonnement d'add-on du cycle 1 passe `canceled` (`sub_1UeasZ...` vu `canceled`, `cancellation_requested`), `customer.subscription.deleted` traite (13:39:52, 13:40:02, 13:40:12, 13:40:21), `org_addons.active=false`, limites revenues a 30 (audits/reports/exports). **REUSSI** x4.
+
+### Controle 7b : annulation directe dans Stripe (`DeleteSubscriptionsSubscriptionExposedId`) de l'abonnement d'add-on issu du controle 6
+Annulations : c200 `sub_1Ueb0T...` ~13:48:55Z, c1000 `sub_1Ueb0h...` ~17:25:15Z, r200 `sub_1Ueb0v...` ~17:26:27Z, g1000 `sub_1Ueb199...` ~17:26:29Z (l'horloge de la session a saute entre les appels). `customer.subscription.deleted` recu et traite (`billing_events` processed 13:48:56, 17:25:16, 17:26:28, 17:26:30), `org_addons.active=false`, limites 30/30/30 relues par l'API, plan inchange (`trialing`, memes valeurs). **REUSSI** x4.
+
+Application reelle de la limite (402 a la quota) : **NON VERIFIE** (atteindre 30 audits/rapports/exports ou plus depasserait 20 objets) ; « appliquee par checkQuota, prouvee par tests unitaires uniquement ».
+
+### Nettoyage final
+Abonnements d'add-on (8, tous `canceled`) : cycle 1 (annules par `/deactivate`) `sub_1UeasZ9eqtbj6iPBDJownclP`, `sub_1Ueasv9eqtbj6iPBfn9a2rrG`, `sub_1UeatH9eqtbj6iPBHximNIMK`, `sub_1Ueatd9eqtbj6iPBCb9Gf8VX` ; cycle 2 (annules dans Stripe) `sub_1Ueb0T9eqtbj6iPBrgktURI4`, `sub_1Ueb0h9eqtbj6iPBFBVDXlXu`, `sub_1Ueb0v9eqtbj6iPBqhxBpANc`, `sub_1Ueb199eqtbj6iPBDED1DT95`. Abonnements de plan annules (`canceled`) : `sub_1UearN9eqtbj6iPBjYeAuXvQ`, `sub_1Uearf9eqtbj6iPBoMVZRi0c`, `sub_1Uearv9eqtbj6iPBTJyRqgmt`, `sub_1UeasD9eqtbj6iPBY3p1wloH`. Verification : plus aucun abonnement actif sur les 4 clients. Clients TEST non supprimables : `cus_Vfwke5rzT7e3dg`, `cus_VfwlpDu72x6QfQ`, `cus_Vfwls04iKblnrj`, `cus_Vfwl3tb9MijhCo`. Factures d'add-on payees TEST non remboursees : 2 x (12 + 39 + 12 + 14) EUR plus la quantite 2 (+12 +39 +12 +14 en proration eventuelle non verifiee). Aucun objet LIVE. Base de test : 4 organisations jetables conservees (4 jetons magic-link consommes).
+
+### Observations (non bloquantes)
+- `GET /api/addons` expose `orgAddons.<cle>: false` apres desactivation (cle presente a `false`) ; sans effet sur les limites.
+- Le premier achat de chaque paquet a mis ~13 s a repondre (creation Stripe + synchronisation), les suivants ~11 s.
 
 ## Reprise
 Defaut 5 corrige par `6885efbd` ; defaut 6 restant (`billing_cycle_anchor: "now"` a la creation, l.122). Apres correction (reprendre la creation de Test-Replit : pas d'ancre, `error_if_incomplete`) et redeploiement, rejouer les controles 3 a 7 avec des organisations Standard ; la methode, les scripts (inscription navigateur, login-verify, snapshots `/api/addons` `/api/me` `/api/billing/usage`) sont prets.
