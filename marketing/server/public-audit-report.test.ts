@@ -29,10 +29,13 @@ const quota: PublicAuditQuota = {
 
 type FixtureOptions = {
   html?: string;
+  invalidGzip?: boolean;
   pageStatus?: number;
+  pageHeaders?: Record<string, string>;
   finalUrl?: string;
   redirectCount?: number;
   networkFailures?: string[];
+  headUnsupported?: string[];
   robotsBody?: string;
   robotsStatus?: number;
   sitemapStatus?: number;
@@ -124,10 +127,19 @@ function createFixtureFetcher(fixture: FixtureOptions = {}) {
     if (fixture.networkFailures?.includes(url.pathname)) {
       throw new Error(`Fixture network failure at ${url.pathname}`);
     }
+    if (
+      options.method === "HEAD" &&
+      fixture.headUnsupported?.includes(url.pathname)
+    ) {
+      return response(url.toString(), "", {}, 405, 0);
+    }
     if (url.pathname === "/") {
+      const pageBody = fixture.invalidGzip
+        ? Buffer.from("not a gzip stream")
+        : gzipSync(fixture.html ?? pageHtml);
       const page = response(
         url.toString(),
-        gzipSync(fixture.html ?? pageHtml),
+        pageBody,
         {
           "content-type": "text/html; charset=utf-8",
           "content-encoding": "gzip",
@@ -136,6 +148,7 @@ function createFixtureFetcher(fixture: FixtureOptions = {}) {
           "x-content-type-options": "nosniff",
           "x-frame-options": "SAMEORIGIN",
           "referrer-policy": "strict-origin-when-cross-origin",
+          ...fixture.pageHeaders,
         },
         fixture.pageStatus ?? 200,
       );
@@ -327,16 +340,40 @@ test("controlled broken page scores lower and surfaces measured problems", async
 });
 
 test("page status and redirect evidence use the final HTTP response", async () => {
-  const unavailable = await createPublicAuditReport(
-    "https://audit.example/",
-    quota,
-    undefined,
-    createFixtureFetcher({ pageStatus: 503 }).fetcher,
+  for (const status of [404, 503]) {
+    await assert.rejects(
+      () =>
+        createPublicAuditReport(
+          "https://audit.example/",
+          quota,
+          undefined,
+          createFixtureFetcher({ pageStatus: status }).fetcher,
+        ),
+      (error) =>
+        error instanceof PublicAuditTargetError &&
+        error.code === "http_error" &&
+        error.httpStatus === status &&
+        getPublicAuditFailureMessage(error).includes(`HTTP ${status}`),
+    );
+  }
+
+  await assert.rejects(
+    () =>
+      createPublicAuditReport(
+        "https://audit.example/",
+        quota,
+        undefined,
+        createFixtureFetcher({
+          pageStatus: 503,
+          finalUrl: "https://audit.example/final-page",
+          redirectCount: 2,
+        }).fetcher,
+      ),
+    (error) =>
+      error instanceof PublicAuditTargetError &&
+      error.code === "http_error" &&
+      error.httpStatus === 503,
   );
-  const getCheck = (report: Awaited<ReturnType<typeof createPublicAuditReport>>, id: string) =>
-    report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
-  assert.equal(getCheck(unavailable, "technical-http-status")?.status, "failed");
-  assert.equal(getCheck(unavailable, "technical-http-status")?.evidence, "HTTP 503");
 
   const redirected = await createPublicAuditReport(
     "https://audit.example/",
@@ -347,45 +384,72 @@ test("page status and redirect evidence use the final HTTP response", async () =
       redirectCount: 2,
     }).fetcher,
   );
+  const getCheck = (report: Awaited<ReturnType<typeof createPublicAuditReport>>, id: string) =>
+    report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
   assert.equal(redirected.finalUrl, "https://audit.example/final-page");
   assert.equal(getCheck(redirected, "technical-redirects")?.status, "warning");
   assert.equal(getCheck(redirected, "technical-redirects")?.evidence, "2 redirects followed.");
 });
 
-test("an HTML error response does not score metadata or content from its error page", async () => {
+test("an HTML 404 response fails clearly before generating a partial report", async () => {
   const { fetcher, requests } = createFixtureFetcher({
     pageStatus: 404,
     html: pageHtml,
   });
-  const report = await createPublicAuditReport(
-    "https://audit.example/",
-    quota,
-    undefined,
-    fetcher,
+  await assert.rejects(
+    () => createPublicAuditReport("https://audit.example/", quota, undefined, fetcher),
+    (error) =>
+      error instanceof PublicAuditTargetError &&
+      error.code === "http_error" &&
+      error.httpStatus === 404 &&
+      getPublicAuditFailureMessage(error).includes("HTTP 404"),
   );
-  const getCheck = (id: string) =>
-    report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
+  assert.deepEqual(requests.map(({ url }) => new URL(url).pathname), ["/"]);
+});
 
-  assert.equal(getCheck("technical-http-status")?.status, "failed");
-  assert.equal(getCheck("technical-http-status")?.evidence, "HTTP 404");
-  assert.equal(getCheck("seo-title")?.status, "not_measured");
-  assert.equal(getCheck("seo-title")?.evidence, "HTTP 404");
-  assert.equal(getCheck("seo-description")?.status, "not_measured");
-  assert.equal(getCheck("seo-canonical")?.status, "not_measured");
-  assert.equal(getCheck("seo-robots")?.status, "passed");
-  assert.equal(getCheck("seo-sitemap")?.status, "passed");
-  assert.equal(report.coverage.totalCategories, 8);
-  assert.equal(report.overallScore, null);
-  assert.ok(report.actionPlan.some((action) => action.title === "Page response status"));
-  assert.ok(
-    !report.actionPlan.some((action) =>
-      ["Meta description", "Canonical URL"].includes(action.title),
-    ),
+test("a successful response with an explicit crawler challenge fails clearly", async () => {
+  const { fetcher } = createFixtureFetcher({
+    pageHeaders: { "cf-mitigated": "challenge" },
+  });
+  await assert.rejects(
+    () => createPublicAuditReport("https://audit.example/", quota, undefined, fetcher),
+    (error) =>
+      error instanceof PublicAuditTargetError &&
+      error.code === "crawler_blocked" &&
+      getPublicAuditFailureMessage(error).includes("bot-verification challenge"),
   );
-  assert.ok(
-    !requests.some(({ url }) =>
-      ["/site.css", "/images/hero.jpg", "/about"].includes(new URL(url).pathname),
-    ),
+});
+
+test("a successful soft-error page is not reported as an audited page", async () => {
+  const { fetcher } = createFixtureFetcher({
+    html: "<!doctype html><html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>",
+  });
+  await assert.rejects(
+    () => createPublicAuditReport("https://audit.example/", quota, undefined, fetcher),
+    (error) =>
+      error instanceof PublicAuditTargetError &&
+      error.code === "error_page" &&
+      getPublicAuditFailureMessage(error).includes("error page"),
+  );
+});
+
+test("empty or unreadable HTML responses produce clear retrieval errors", async () => {
+  const empty = createFixtureFetcher({ html: " \n " }).fetcher;
+  await assert.rejects(
+    () => createPublicAuditReport("https://audit.example/", quota, undefined, empty),
+    (error) =>
+      error instanceof PublicAuditTargetError &&
+      error.code === "empty_response" &&
+      getPublicAuditFailureMessage(error).includes("no HTML content"),
+  );
+
+  const unreadable = createFixtureFetcher({ invalidGzip: true }).fetcher;
+  await assert.rejects(
+    () => createPublicAuditReport("https://audit.example/", quota, undefined, unreadable),
+    (error) =>
+      error instanceof PublicAuditTargetError &&
+      error.code === "unreadable_response" &&
+      getPublicAuditFailureMessage(error).includes("could not decode"),
   );
 });
 
@@ -469,7 +533,7 @@ test("canonical rel tokens are recognized without exposing query parameters", as
   assert.doesNotMatch(canonical?.evidence ?? "", /private-token|visitor=/);
 });
 
-test("failed supporting requests remain unmeasured instead of becoming passes", async () => {
+test("failed supporting requests stay unmeasured or report retrieval warnings", async () => {
   const report = await createPublicAuditReport(
     "https://audit.example/",
     quota,
@@ -489,9 +553,12 @@ test("failed supporting requests remain unmeasured instead of becoming passes", 
   assert.equal(check("seo-robots")?.status, "not_measured");
   assert.equal(check("seo-sitemap")?.status, "not_measured");
   assert.equal(check("mobile-media-queries")?.status, "not_measured");
-  assert.equal(check("performance-resource-availability")?.status, "not_measured");
+  assert.equal(check("performance-resource-availability")?.status, "warning");
   assert.equal(check("technical-internal-links")?.status, "warning");
-  assert.match(check("technical-internal-links")?.evidence ?? "", /1 were not measurable/);
+  assert.match(
+    check("technical-internal-links")?.evidence ?? "",
+    /1 of 2 sampled.*1 could not be reached/,
+  );
 });
 
 test("missing optional robots and unadvertised sitemap files do not count as SEO failures", async () => {
@@ -504,11 +571,38 @@ test("missing optional robots and unadvertised sitemap files do not count as SEO
   const check = (id: string) =>
     report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
 
-  assert.equal(check("seo-robots")?.status, "not_measured");
+  assert.equal(check("seo-robots")?.status, "passed");
   assert.match(check("seo-robots")?.evidence ?? "", /HTTP 404/);
-  assert.equal(check("technical-robots")?.status, "not_measured");
-  assert.equal(check("seo-sitemap")?.status, "not_measured");
+  assert.equal(check("technical-robots")?.status, "passed");
+  assert.equal(check("seo-sitemap")?.status, "passed");
   assert.match(check("seo-sitemap")?.evidence ?? "", /no same-origin sitemap was advertised/);
+});
+
+test("GET status-only fallback measures assets and links when HEAD is unsupported", async () => {
+  const { fetcher, requests } = createFixtureFetcher({
+    headUnsupported: ["/images/hero.jpg", "/about"],
+  });
+  const report = await createPublicAuditReport(
+    "https://audit.example/",
+    quota,
+    undefined,
+    fetcher,
+  );
+  const check = (id: string) =>
+    report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
+
+  assert.equal(check("performance-resource-availability")?.status, "passed");
+  assert.equal(check("technical-internal-links")?.status, "passed");
+  assert.ok(
+    requests.some(({ url, method }) =>
+      new URL(url).pathname === "/images/hero.jpg" && method === "GET",
+    ),
+  );
+  assert.ok(
+    requests.some(({ url, method }) =>
+      new URL(url).pathname === "/about" && method === "GET",
+    ),
+  );
 });
 
 test("an advertised sitemap that returns 404 remains a warning", async () => {
@@ -555,7 +649,7 @@ test("a sitemap directive outside the page origin is not fetched or inferred", a
   );
 });
 
-test("an audit with too few scored categories does not show a global score", async () => {
+test("an empty but retrievable page reports its observable source checks", async () => {
   const report = await createPublicAuditReport(
     "https://audit.example/",
     quota,
@@ -565,17 +659,17 @@ test("an audit with too few scored categories does not show a global score", asy
       networkFailures: ["/robots.txt", "/sitemap.xml"],
     }).fetcher,
   );
-  assert.equal(report.overallScore, null);
-  assert.equal(report.coverage.scoredCategories, 3);
+  assert.ok(report.overallScore !== null);
+  assert.ok(report.coverage.scoredCategories > 3);
   assert.equal(report.coverage.totalCategories, 8);
   assert.equal(
     report.categories.find((category) => category.key === "mobile")?.status,
     "not_measured",
   );
-  assert.equal(
-    report.categories.find((category) => category.key === "mobile")?.score,
-    null,
-  );
+  const checks = report.categories.flatMap((category) => category.checks);
+  assert.equal(checks.find((item) => item.id === "accessibility-image-alt")?.status, "passed");
+  assert.equal(checks.find((item) => item.id === "technical-fragments")?.status, "passed");
+  assert.equal(checks.find((item) => item.id === "mobile-overflow")?.status, "not_measured");
 });
 
 test("category scoring excludes not-measured checks", () => {

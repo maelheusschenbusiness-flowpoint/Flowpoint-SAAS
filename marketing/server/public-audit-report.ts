@@ -107,6 +107,30 @@ function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function isExplicitErrorPageLabel(value: string): boolean {
+  const label = normalizeText(value).toLowerCase();
+  return (
+    /^(?:page )?not found$/.test(label) ||
+    /^(?:403|404|410|500|502|503)(?:\s+(?:not found|forbidden|error|service unavailable))?$/.test(
+      label,
+    ) ||
+    ["access denied", "request blocked", "service unavailable"].includes(label)
+  );
+}
+
+function isCrawlerChallenge(
+  headers: PublicFetchResult["headers"],
+  html: string,
+): boolean {
+  if (header(headers, "cf-mitigated")?.toLowerCase() === "challenge") {
+    return true;
+  }
+  return (
+    /<title>\s*just a moment(?:\.{3}|…)?\s*<\/title>/i.test(html) &&
+    /\/cdn-cgi\/challenge-platform\/|cf-chl-|__cf_chl/i.test(html)
+  );
+}
+
 function decompressText(
   response: PublicFetchResult,
   maximumOutputBytes: number,
@@ -177,23 +201,6 @@ function notMeasured(
     reason,
     "This check needs browser-based field or runtime data that this public audit does not collect.",
     "Use real-user monitoring or a browser test to measure this area.",
-    null,
-  );
-}
-
-function notMeasuredForHttpError(
-  check: PublicAuditCheck,
-  status: number,
-): PublicAuditCheck {
-  return makeCheck(
-    check.id,
-    check.title,
-    "not_measured",
-    "info",
-    `HTTP ${status}`,
-    `This page-specific check was not scored because the requested page returned HTTP ${status}; the response body may be an error page.`,
-    "Metadata and content from an error response may not describe the requested page.",
-    "Re-run the audit after the requested page returns a successful response.",
     null,
   );
 }
@@ -346,14 +353,12 @@ async function getPageSupportingData(
     input: string,
     options?: PublicFetchOptions,
   ) => Promise<PublicFetchResult> = safePublicFetch,
-  includePageResources = true,
 ) {
   const base = new URL(pageUrl);
   const elements = collectElements(root);
-  const pageResourceElements = includePageResources ? elements : [];
   const cssUrls = Array.from(
     new Set(
-      pageResourceElements
+      elements
         .filter(
           (element) =>
             elementName(element) === "link" &&
@@ -373,7 +378,7 @@ async function getPageSupportingData(
 
   const assetUrls = Array.from(
     new Set(
-      pageResourceElements
+      elements
         .filter((element) =>
           ["img", "script", "iframe"].includes(elementName(element)),
         )
@@ -390,7 +395,7 @@ async function getPageSupportingData(
 
   const linkUrls = Array.from(
     new Set(
-      pageResourceElements
+      elements
         .filter((element) => elementName(element) === "a")
         .map((element) =>
           getAttribute(element, "href")?.trim() ?? "",
@@ -416,15 +421,29 @@ async function getPageSupportingData(
   };
   const fetchHead = async (url: string) => {
     try {
-      const response = await fetcher(url, {
+      const headResponse = await fetcher(url, {
         method: "HEAD",
         maxRedirects: 1,
         expectedOrigin: base.origin,
         signal,
       });
-      return { url, response };
+      if (![405, 501].includes(headResponse.status)) {
+        return { url, response: headResponse, method: "HEAD" as const };
+      }
+      try {
+        const getResponse = await fetcher(url, {
+          method: "GET",
+          maxBytes: 0,
+          maxRedirects: 1,
+          expectedOrigin: base.origin,
+          signal,
+        });
+        return { url, response: getResponse, method: "GET" as const };
+      } catch {
+        return { url, response: headResponse, method: "HEAD" as const };
+      }
     } catch {
-      return { url, response: null };
+      return { url, response: null, method: null };
     }
   };
 
@@ -502,6 +521,13 @@ export async function createPublicAuditReport(
     throw new PublicAuditTargetError("connection_failed");
   }
 
+  if (page.status < 200 || page.status >= 300) {
+    throw new PublicAuditTargetError("http_error", page.status);
+  }
+  if ([204, 205].includes(page.status)) {
+    throw new PublicAuditTargetError("empty_response", page.status);
+  }
+
   const contentType = header(page.headers, "content-type")?.toLowerCase() ?? "";
   if (
     contentType &&
@@ -513,7 +539,13 @@ export async function createPublicAuditReport(
 
   const html = decompressText(page, 1024 * 1024);
   if (html === null) {
-    throw new PublicAuditTargetError("connection_failed");
+    throw new PublicAuditTargetError("unreadable_response", page.status);
+  }
+  if (!html.trim()) {
+    throw new PublicAuditTargetError("empty_response", page.status);
+  }
+  if (isCrawlerChallenge(page.headers, html)) {
+    throw new PublicAuditTargetError("crawler_blocked", page.status);
   }
   const document = parse(html) as unknown as HtmlNode;
   const elements = collectElements(document);
@@ -563,9 +595,15 @@ export async function createPublicAuditReport(
     /^h[1-6]$/.test(elementName(element)),
   );
   const h1s = headings.filter((element) => elementName(element) === "h1");
+  if (
+    isExplicitErrorPageLabel(title) ||
+    h1s.some((heading) =>
+      isExplicitErrorPageLabel(normalizeText(visibleText(heading))),
+    )
+  ) {
+    throw new PublicAuditTargetError("error_page", page.status);
+  }
   const pageUrl = new URL(page.finalUrl);
-  const pageDocumentAvailable =
-    page.status >= 200 && page.status < 300 && page.status !== 204;
   const canonicalTargets = canonicalElements.map((element) =>
     sameOriginUrl(getAttribute(element, "href")?.trim() ?? "", pageUrl),
   );
@@ -669,7 +707,6 @@ export async function createPublicAuditReport(
     document,
     signal,
     fetcher,
-    pageDocumentAvailable,
   );
   const externalCssContents = support.css
     .filter(
@@ -685,7 +722,7 @@ export async function createPublicAuditReport(
   const sameOriginAssets =
     support.assets.filter((item) => item.response).length;
   const measuredAssets = support.assets.filter(
-    (item) => item.response && ![405, 501].includes(item.response.status),
+    (item) => item.response,
   );
   const failedAssets = measuredAssets.filter(
     (item) => item.response!.status < 200 || item.response!.status >= 300,
@@ -761,11 +798,30 @@ export async function createPublicAuditReport(
   ).length;
   const cssSourcesMeasured =
     cssResourcesMeasured + (pageCssInline.trim() ? 1 : 0);
+  const declaredStylesheetCount = byTag("link").filter(
+    (element) =>
+      elementName(element) === "link" && hasRelToken(element, "stylesheet"),
+  ).length;
+  const unmeasuredStylesheetCount = Math.max(
+    0,
+    declaredStylesheetCount - support.css.length,
+  );
+  const unavailableStylesheetCount =
+    unmeasuredStylesheetCount +
+    support.css.filter((item) => !item.response).length;
+  const cssResponsesWithoutUsableStyles = support.css.filter(
+    (item) =>
+      item.response &&
+      !(
+        item.response.status >= 200 &&
+        item.response.status < 300 &&
+        responseContentType(item.response).includes("text/css")
+      ),
+  );
   const titleLength = title.length;
   const descriptionLength = description.length;
   const measuredInternalLinks = support.internalLinks.filter(
-    (item) =>
-      item.response && ![405, 501].includes(item.response.status),
+    (item) => item.response,
   );
   const internalLinkFailures = measuredInternalLinks.filter(
     (item) => item.response!.status >= 400,
@@ -785,14 +841,6 @@ export async function createPublicAuditReport(
       !support.sitemapAdvertised &&
       [404, 410].includes(support.sitemap.status),
   );
-  const checksIndependentOfPageDocument = new Set([
-    "seo-robots",
-    "seo-sitemap",
-    "technical-http-status",
-    "technical-redirects",
-    "technical-robots",
-  ]);
-
   const resultByKey: Record<PublicAuditCategoryKey, PublicAuditCheck[]> = {
     seo: [
       makeCheck(
@@ -883,14 +931,14 @@ export async function createPublicAuditReport(
         "seo-structured-data",
         "Structured data syntax",
         hasJsonLd.length === 0
-          ? "not_measured"
+          ? "warning"
           : validJsonLd.length === hasJsonLd.length
             ? "passed"
             : "warning",
         "low",
         hasJsonLd.length
           ? `${validJsonLd.length} of ${hasJsonLd.length} JSON-LD blocks parsed as JSON.`
-          : null,
+          : "No JSON-LD structured data was found to validate.",
         "Only JSON syntax is checked; schema eligibility and search rich-result validation are not tested.",
         "Valid structured data can help eligible pages provide clearer context to search systems.",
         "Validate structured data with a dedicated schema and rich-result tester.",
@@ -900,7 +948,7 @@ export async function createPublicAuditReport(
         "seo-robots",
         "Robots.txt response",
         robotsFileMissing
-          ? "not_measured"
+          ? "passed"
           : support.robots
             ? support.robots.status >= 200 && support.robots.status < 300
               ? "passed"
@@ -924,16 +972,20 @@ export async function createPublicAuditReport(
       makeCheck(
         "seo-sitemap",
         "Sitemap response",
-        support.sitemapSkippedForOrigin || optionalSitemapMissing
+        support.sitemapSkippedForOrigin
           ? "not_measured"
+          : optionalSitemapMissing
+            ? "passed"
           : support.sitemap
             ? support.sitemap.status >= 200 && support.sitemap.status < 300
               ? "passed"
               : "warning"
             : "not_measured",
-        support.sitemapSkippedForOrigin || optionalSitemapMissing
+        support.sitemapSkippedForOrigin
           ? "info"
-          : "low",
+          : optionalSitemapMissing
+            ? "info"
+            : "low",
         support.sitemapSkippedForOrigin
           ? "The sitemap directive did not resolve to a safe same-origin URL; it was not fetched."
           : optionalSitemapMissing
@@ -985,11 +1037,13 @@ export async function createPublicAuditReport(
           header(page.headers, "content-encoding")?.toLowerCase() !== "identity"
           ? "passed"
           : page.transferBytes < 1024
-            ? "not_measured"
+            ? "passed"
             : "warning",
         "low",
         header(page.headers, "content-encoding") ??
-          (page.transferBytes < 1024 ? "Response was too small to judge compression." : "No content-encoding response header was present."),
+          (page.transferBytes < 1024
+            ? "The response is under 1 KB; compression has little practical benefit at this size."
+            : "No content-encoding response header was present."),
         "The audit checks the page response headers and does not estimate savings from compression.",
         "Compression can reduce transfer time for larger text responses.",
         "Enable gzip or Brotli for text responses when it is appropriate for your server.",
@@ -1007,17 +1061,19 @@ export async function createPublicAuditReport(
       makeCheck(
         "performance-resource-availability",
         "Sampled same-site asset availability",
-        measuredAssets.length === 0
-          ? "not_measured"
+        support.assets.length === 0
+          ? "passed"
           : failedAssets.length === 0 &&
               measuredAssets.length === support.assets.length
             ? "passed"
+            : failedAssets.length === support.assets.length
+              ? "failed"
             : "warning",
-        "low",
+        support.assets.length ? "low" : "info",
         support.assets.length
-          ? `${sameOriginAssets} of ${support.assets.length} sampled assets returned HEAD responses; ${failedAssets.length} returned non-success status and ${support.assets.length - measuredAssets.length} could not be assessed.`
-          : "No same-site image, script, or iframe resources were sampled.",
-        "A small sample of same-origin assets was checked using HEAD requests only; this does not measure download size or browser loading.",
+          ? `${sameOriginAssets} of ${support.assets.length} sampled assets returned status responses; ${failedAssets.length} returned non-success status and ${support.assets.length - measuredAssets.length} could not be reached.`
+          : "No same-site image, script, or iframe resources were declared.",
+        "A small sample of same-origin assets was checked using HEAD requests, with GET status-only fallback when HEAD is unsupported; this does not measure download size or browser loading.",
         "Unavailable assets may affect visitors, while a successful HEAD response does not prove fast loading.",
         "Verify any flagged asset with a normal page load, then use a browser waterfall to assess its transfer and loading behavior.",
         support.assets.length ? "moderate" : null,
@@ -1053,11 +1109,11 @@ export async function createPublicAuditReport(
         "accessibility-image-alt",
         "Image alternative text",
         images.length === 0
-          ? "not_measured"
+          ? "passed"
           : imagesWithAlt.length === images.length
             ? "passed"
             : "failed",
-        "high",
+        images.length === 0 ? "info" : "high",
         images.length
           ? `${imagesWithAlt.length} of ${images.length} images have an alt attribute.`
           : "No images were found in the returned HTML.",
@@ -1070,11 +1126,11 @@ export async function createPublicAuditReport(
         "accessibility-control-labels",
         "Form control names",
         controls.length === 0
-          ? "not_measured"
+          ? "passed"
           : formControlsNamed.length === controls.length
             ? "passed"
             : "failed",
-        "high",
+        controls.length === 0 ? "info" : "high",
         controls.length
           ? `${formControlsNamed.length} of ${controls.length} controls have an associated label or accessible name.`
           : "No input, select, or textarea elements were found.",
@@ -1087,11 +1143,11 @@ export async function createPublicAuditReport(
         "accessibility-link-names",
         "Link and button names",
         allLinksAndButtons.length === 0
-          ? "not_measured"
+          ? "passed"
           : namedLinksAndButtons.length === allLinksAndButtons.length
             ? "passed"
             : "warning",
-        "medium",
+        allLinksAndButtons.length === 0 ? "info" : "medium",
         `${namedLinksAndButtons.length} of ${allLinksAndButtons.length} links and buttons have text or an ARIA name.`,
         "Names are inferred from text and ARIA attributes in the returned HTML.",
         "Clear control names describe actions to people using assistive technology.",
@@ -1140,12 +1196,15 @@ export async function createPublicAuditReport(
         "security-hsts",
         "HSTS response header",
         !pageIsHttps
-          ? "not_measured"
+          ? "passed"
           : hsts
             ? "passed"
             : "warning",
-        "medium",
-        hsts ?? (pageIsHttps ? "No Strict-Transport-Security header was found." : null),
+        pageIsHttps ? "medium" : "info",
+        hsts ??
+          (pageIsHttps
+            ? "No Strict-Transport-Security header was found."
+            : "HSTS only applies to HTTPS; the page uses HTTP."),
         "The audit checks the final page response headers.",
         "HSTS tells compatible browsers to prefer secure connections for the site.",
         "Add HSTS after confirming the whole domain and its subdomains support HTTPS.",
@@ -1201,14 +1260,14 @@ export async function createPublicAuditReport(
         "security-mixed-content",
         "Insecure resource references",
         !pageIsHttps
-          ? "not_measured"
+          ? "passed"
           : mixedContentCount === 0
             ? "passed"
             : "failed",
-        "high",
+        pageIsHttps ? "high" : "info",
         pageIsHttps
           ? `${mixedContentCount} explicit HTTP asset or stylesheet references found.`
-          : null,
+          : "Mixed content applies to HTTPS pages; this page uses HTTP.",
         "This source check looks for absolute http:// resource and stylesheet references in the HTML.",
         "Insecure subresources can weaken an otherwise secure page.",
         "Use HTTPS URLs for scripts, stylesheets, images, and embeds.",
@@ -1218,14 +1277,14 @@ export async function createPublicAuditReport(
         "security-form-actions",
         "Form destination security",
         forms.length === 0
-          ? "not_measured"
+          ? "passed"
           : insecureFormActions === 0
             ? "passed"
             : "failed",
-        "high",
+        forms.length ? "high" : "info",
         forms.length
           ? `${insecureFormActions} of ${forms.length} form actions do not resolve to HTTPS.`
-          : null,
+          : "No forms were found to inspect.",
         "The audit checks form action URLs in the HTML; it does not submit forms.",
         "Forms can carry information that should be sent over secure connections.",
         "Use HTTPS form actions and never submit credentials over HTTP.",
@@ -1254,14 +1313,20 @@ export async function createPublicAuditReport(
         "mobile-media-queries",
         "Responsive CSS declarations",
         cssSourcesMeasured === 0
-          ? "not_measured"
-          : cssHasMediaQuery
+          ? unavailableStylesheetCount > 0
+            ? "not_measured"
+            : "warning"
+          : cssHasMediaQuery && unavailableStylesheetCount === 0
             ? "passed"
             : "warning",
         "medium",
         cssSourcesMeasured
-          ? `${cssResourcesMeasured} successful external stylesheet responses and ${pageCssInline.trim() ? "inline CSS" : "no inline CSS"} checked; ${cssHasMediaQuery ? "a media query was found." : "no @media rule was found in the inspected source."}`
-          : "No same-origin stylesheet content could be measured.",
+          ? `${cssResourcesMeasured} successful external stylesheet responses and ${pageCssInline.trim() ? "inline CSS" : "no inline CSS"} checked; ${cssHasMediaQuery ? "a media query was found." : "no @media rule was found in the inspected source."}${unavailableStylesheetCount ? `; ${unavailableStylesheetCount} stylesheet source(s) were unavailable` : ""}${cssResponsesWithoutUsableStyles.length ? `; ${cssResponsesWithoutUsableStyles.length} response(s) were not usable as CSS` : ""}.`
+          : unavailableStylesheetCount > 0
+            ? `${unavailableStylesheetCount} stylesheet source(s) could not be safely fetched or reached.`
+            : cssResponsesWithoutUsableStyles.length > 0
+              ? `${cssResponsesWithoutUsableStyles.length} stylesheet response(s) were returned but not usable as CSS.`
+              : "No inline CSS or stylesheet declarations were found.",
         "The audit checks a small sample of same-origin CSS and inline styles; it does not render the page.",
         "Responsive rules can adapt layout to different screen sizes.",
         "Test the layout in real mobile and desktop browsers.",
@@ -1271,11 +1336,11 @@ export async function createPublicAuditReport(
         "mobile-srcset",
         "Responsive image sources",
         images.length === 0
-          ? "not_measured"
+          ? "passed"
           : imageSrcsets.length > 0
             ? "passed"
             : "warning",
-        "low",
+        images.length === 0 ? "info" : "low",
         images.length
           ? `${imageSrcsets.length} of ${images.length} images use srcset.`
           : "No images were found.",
@@ -1315,15 +1380,11 @@ export async function createPublicAuditReport(
         "Form presence",
         forms.length > 0
           ? "passed"
-          : namedLinksAndButtons.length > 0
-            ? "not_measured"
-            : "warning",
+          : "warning",
         "low",
         forms.length
           ? `${forms.length} form elements found.`
-          : namedLinksAndButtons.length > 0
-            ? "No form element was found; this may be intentional for this page."
-            : "No form or named link/button was found.",
+          : `No form element was found; ${namedLinksAndButtons.length} named links or buttons were found instead.`,
         "Only the presence of HTML forms is checked; submissions and conversion rates are not tested.",
         "Some pages use links or buttons rather than a form for the next step.",
         forms.length
@@ -1334,12 +1395,16 @@ export async function createPublicAuditReport(
         "conversion-control-labels",
         "Form field clarity",
         controls.length === 0
-          ? "not_measured"
+          ? "passed"
           : formControlsNamed.length === controls.length
             ? "passed"
             : "warning",
-        "medium",
-        `${formControlsNamed.length} of ${controls.length} form controls have an accessible label.`,
+        controls.length === 0
+          ? "info"
+          : "medium",
+        controls.length
+          ? `${formControlsNamed.length} of ${controls.length} form controls have an accessible label.`
+          : "No form controls were found to label.",
         "The audit checks HTML labels and ARIA names but does not test the form flow.",
         "Clear field names can reduce confusion during a form task.",
         "Add visible labels that explain what each field needs.",
@@ -1384,29 +1449,33 @@ export async function createPublicAuditReport(
       makeCheck(
         "technical-internal-links",
         "Sampled internal links",
-        internalLinkMeasured === 0
-          ? "not_measured"
-          : internalLinkFailures.length === 0 &&
-              unmeasuredInternalLinks === 0 &&
-              redirectedInternalLinks === 0
-            ? "passed"
-            : "warning",
+        support.internalLinks.length === 0
+          ? "passed"
+          : internalLinkMeasured === 0
+            ? "warning"
+            : internalLinkFailures.length === 0 &&
+                unmeasuredInternalLinks === 0 &&
+                redirectedInternalLinks === 0
+              ? "passed"
+              : "warning",
         "medium",
         internalLinkMeasured
-          ? `${internalLinkMeasured} of ${support.internalLinks.length} sampled same-site links had usable HEAD responses; ${internalLinkFailures.length} returned HTTP 4xx or 5xx, ${redirectedInternalLinks} returned 3xx, and ${unmeasuredInternalLinks} were not measurable.`
-          : "No same-site links could be measured with HEAD requests.",
-        "Only the first few unique same-origin links are sampled; some sites treat HEAD differently from GET.",
+          ? `${internalLinkMeasured} of ${support.internalLinks.length} sampled same-site links returned status responses; ${internalLinkFailures.length} returned HTTP 4xx or 5xx, ${redirectedInternalLinks} returned 3xx, and ${unmeasuredInternalLinks} could not be reached.`
+          : support.internalLinks.length === 0
+            ? "No same-site links were declared."
+            : `None of the ${support.internalLinks.length} sampled same-site links could be reached.`,
+        "Only the first few unique same-origin links are sampled; GET is used as a status-only fallback when a site rejects HEAD.",
         "Broken internal links can interrupt visitor journeys and crawl paths.",
         "Review the sampled links and test any HEAD-only failures with a browser.",
-        internalLinkMeasured ? "moderate" : null,
+        support.internalLinks.length ? "moderate" : null,
       ),
       makeCheck(
         "technical-fragments",
         "In-page anchor targets",
         internalAnchors.length === 0
-          ? "not_measured"
+          ? "passed"
           : anchorStatus,
-        "low",
+        internalAnchors.length === 0 ? "info" : "low",
         internalAnchors.length
           ? `${unresolvedAnchors} of ${internalAnchors.length} fragment links did not match an id in the HTML.`
           : null,
@@ -1419,7 +1488,7 @@ export async function createPublicAuditReport(
         "technical-robots",
         "Robots.txt availability",
         robotsFileMissing
-          ? "not_measured"
+          ? "passed"
           : support.robots
             ? support.robots.status < 400
               ? "passed"
@@ -1472,11 +1541,11 @@ export async function createPublicAuditReport(
         "content-paragraph-repetition",
         "Repeated paragraphs",
         paragraphs.length === 0
-          ? "not_measured"
+          ? "passed"
           : uniqueParagraphs.size === paragraphs.length
             ? "passed"
             : "warning",
-        "low",
+        paragraphs.length ? "low" : "info",
         `${paragraphs.length - uniqueParagraphs.size} repeated paragraphs among ${paragraphs.length} longer paragraphs.`,
         "This detects exact repeated paragraphs only; it does not judge originality or factual accuracy.",
         "Repeated copy can make a page harder to scan.",
@@ -1487,11 +1556,11 @@ export async function createPublicAuditReport(
         "content-heading-repetition",
         "Repeated headings",
         headings.length === 0
-          ? "not_measured"
+          ? "passed"
           : duplicateHeadingCount === 0
             ? "passed"
             : "warning",
-        "low",
+        headings.length ? "low" : "info",
         `${duplicateHeadingCount} exact duplicate heading labels among ${headingText.length} headings.`,
         "This check finds exact duplicate heading text only.",
         "Specific headings can make a long page easier to navigate.",
@@ -1522,14 +1591,7 @@ export async function createPublicAuditReport(
   };
 
   const categories = PUBLIC_AUDIT_CATEGORIES.map(({ key }) =>
-    scorePublicAuditCategory(
-      key,
-      resultByKey[key].map((check) =>
-        pageDocumentAvailable || checksIndependentOfPageDocument.has(check.id)
-          ? check
-          : notMeasuredForHttpError(check, page.status),
-      ),
-    ),
+    scorePublicAuditCategory(key, resultByKey[key]),
   );
   const scoredCategories = categories
     .map((category) => category.score)
@@ -1612,6 +1674,16 @@ export function getPublicAuditFailureMessage(error: unknown): string {
       return "The website took too long to respond. Please try again later.";
     case "response_too_large":
       return "The page is too large for this free check.";
+    case "http_error":
+      return `The website returned HTTP ${error.httpStatus ?? "error"} instead of a successful page. Please try again when the page is available.`;
+    case "empty_response":
+      return `The website returned no HTML content${error.httpStatus ? ` (HTTP ${error.httpStatus})` : ""}. Please check that the address points to a page.`;
+    case "unreadable_response":
+      return "The website returned HTML that the audit could not decode. Please try again later.";
+    case "crawler_blocked":
+      return "The website presented a bot-verification challenge to the audit crawler. Allow the FlowPoint audit crawler or try again later.";
+    case "error_page":
+      return "The website returned an error page instead of the requested content. Please check the address and try again.";
     default:
       return "The website could not be reached. Please check the address and try again.";
   }
