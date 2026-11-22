@@ -57,7 +57,7 @@ export async function initAutomationTables(): Promise<void> {
       CREATE TABLE IF NOT EXISTS automation_integrations (
         id           TEXT PRIMARY KEY,
         org_id       TEXT NOT NULL DEFAULT 'default',
-        provider     TEXT NOT NULL,
+        provider     TEXT NOT NULL DEFAULT 'custom',
         label        TEXT,
         config       JSONB DEFAULT '{}',
         enabled      BOOLEAN NOT NULL DEFAULT true,
@@ -120,6 +120,9 @@ export async function initAutomationTables(): Promise<void> {
     for (const [col, def] of aiCols) {
       await client.query(`ALTER TABLE automation_integrations ADD COLUMN IF NOT EXISTS ${col} ${def}`);
     }
+    // Tables creees avant ce correctif : provider NOT NULL sans defaut (base de test).
+    // Additif et idempotent : seul le DEFAULT change, aucune donnee n'est touchee.
+    await client.query(`ALTER TABLE automation_integrations ALTER COLUMN provider SET DEFAULT 'custom'`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_auto_intg_org_active ON automation_integrations(org_id, active)`);
 
     // ── automation_runs — add integration/event columns ───────────────────────
