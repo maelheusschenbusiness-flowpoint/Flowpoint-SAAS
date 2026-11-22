@@ -33,6 +33,9 @@ type FixtureOptions = {
   finalUrl?: string;
   redirectCount?: number;
   networkFailures?: string[];
+  robotsBody?: string;
+  robotsStatus?: number;
+  sitemapStatus?: number;
 };
 
 function makeCheck(
@@ -143,14 +146,20 @@ function createFixtureFetcher(fixture: FixtureOptions = {}) {
       };
     }
     if (url.pathname === "/robots.txt") {
-      return response(url.toString(), "User-agent: *\nAllow: /\n", {
-        "content-type": "text/plain",
-      });
+      return response(
+        url.toString(),
+        fixture.robotsBody ?? "User-agent: *\nAllow: /\n",
+        { "content-type": "text/plain" },
+        fixture.robotsStatus ?? 200,
+      );
     }
     if (url.pathname === "/sitemap.xml") {
-      return response(url.toString(), "<urlset></urlset>", {
-        "content-type": "application/xml",
-      });
+      return response(
+        url.toString(),
+        "<urlset></urlset>",
+        { "content-type": "application/xml" },
+        fixture.sitemapStatus ?? 200,
+      );
     }
     if (url.pathname === "/site.css") {
       return response(
@@ -343,6 +352,43 @@ test("page status and redirect evidence use the final HTTP response", async () =
   assert.equal(getCheck(redirected, "technical-redirects")?.evidence, "2 redirects followed.");
 });
 
+test("an HTML error response does not score metadata or content from its error page", async () => {
+  const { fetcher, requests } = createFixtureFetcher({
+    pageStatus: 404,
+    html: pageHtml,
+  });
+  const report = await createPublicAuditReport(
+    "https://audit.example/",
+    quota,
+    undefined,
+    fetcher,
+  );
+  const getCheck = (id: string) =>
+    report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
+
+  assert.equal(getCheck("technical-http-status")?.status, "failed");
+  assert.equal(getCheck("technical-http-status")?.evidence, "HTTP 404");
+  assert.equal(getCheck("seo-title")?.status, "not_measured");
+  assert.equal(getCheck("seo-title")?.evidence, "HTTP 404");
+  assert.equal(getCheck("seo-description")?.status, "not_measured");
+  assert.equal(getCheck("seo-canonical")?.status, "not_measured");
+  assert.equal(getCheck("seo-robots")?.status, "passed");
+  assert.equal(getCheck("seo-sitemap")?.status, "passed");
+  assert.equal(report.coverage.totalCategories, 8);
+  assert.equal(report.overallScore, null);
+  assert.ok(report.actionPlan.some((action) => action.title === "Page response status"));
+  assert.ok(
+    !report.actionPlan.some((action) =>
+      ["Meta description", "Canonical URL"].includes(action.title),
+    ),
+  );
+  assert.ok(
+    !requests.some(({ url }) =>
+      ["/site.css", "/images/hero.jpg", "/about"].includes(new URL(url).pathname),
+    ),
+  );
+});
+
 test("meta description and canonical checks flag duplicate contradictory HTML", async () => {
   const html = pageHtml
     .replace(
@@ -377,6 +423,31 @@ test("meta description and canonical checks flag duplicate contradictory HTML", 
         Boolean(action.reason),
     ),
   );
+});
+
+test("identical duplicate SEO tags are reported as redundant, not conflicting", async () => {
+  const description = '<meta name="description" content="A clear description of the Fieldwork Studio website and its services.">';
+  const canonical = '<link rel="canonical" href="https://audit.example/">';
+  const html = pageHtml
+    .replace(description, `${description}${description}`)
+    .replace(canonical, `${canonical}${canonical}`);
+  const report = await createPublicAuditReport(
+    "https://audit.example/",
+    quota,
+    undefined,
+    createFixtureFetcher({ html }).fetcher,
+  );
+  const check = (id: string) =>
+    report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
+
+  assert.equal(check("seo-description")?.status, "warning");
+  assert.equal(check("seo-description")?.severity, "low");
+  assert.match(check("seo-description")?.evidence ?? "", /identical.*text agrees/i);
+  assert.doesNotMatch(check("seo-description")?.evidence ?? "", /conflict/i);
+  assert.equal(check("seo-canonical")?.status, "warning");
+  assert.equal(check("seo-canonical")?.severity, "low");
+  assert.match(check("seo-canonical")?.evidence ?? "", /same URL; the target is consistent/i);
+  assert.match(check("content-title-description")?.evidence ?? "", /duplicate but consistent/i);
 });
 
 test("canonical rel tokens are recognized without exposing query parameters", async () => {
@@ -421,6 +492,67 @@ test("failed supporting requests remain unmeasured instead of becoming passes", 
   assert.equal(check("performance-resource-availability")?.status, "not_measured");
   assert.equal(check("technical-internal-links")?.status, "warning");
   assert.match(check("technical-internal-links")?.evidence ?? "", /1 were not measurable/);
+});
+
+test("missing optional robots and unadvertised sitemap files do not count as SEO failures", async () => {
+  const report = await createPublicAuditReport(
+    "https://audit.example/",
+    quota,
+    undefined,
+    createFixtureFetcher({ robotsStatus: 404, sitemapStatus: 404 }).fetcher,
+  );
+  const check = (id: string) =>
+    report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
+
+  assert.equal(check("seo-robots")?.status, "not_measured");
+  assert.match(check("seo-robots")?.evidence ?? "", /HTTP 404/);
+  assert.equal(check("technical-robots")?.status, "not_measured");
+  assert.equal(check("seo-sitemap")?.status, "not_measured");
+  assert.match(check("seo-sitemap")?.evidence ?? "", /no same-origin sitemap was advertised/);
+});
+
+test("an advertised sitemap that returns 404 remains a warning", async () => {
+  const report = await createPublicAuditReport(
+    "https://audit.example/",
+    quota,
+    undefined,
+    createFixtureFetcher({
+      robotsBody:
+        "User-agent: *\nAllow: /\nSitemap: https://audit.example/sitemap.xml\n",
+      sitemapStatus: 404,
+    }).fetcher,
+  );
+  const sitemap = report.categories
+    .flatMap((category) => category.checks)
+    .find((item) => item.id === "seo-sitemap");
+
+  assert.equal(sitemap?.status, "warning");
+  assert.match(sitemap?.evidence ?? "", /HTTP 404/);
+});
+
+test("a sitemap directive outside the page origin is not fetched or inferred", async () => {
+  const { fetcher, requests } = createFixtureFetcher({
+    robotsBody:
+      "User-agent: *\nAllow: /\nSitemap: https://cdn.example/sitemap.xml\n",
+  });
+  const report = await createPublicAuditReport(
+    "https://audit.example/",
+    quota,
+    undefined,
+    fetcher,
+  );
+  const sitemap = report.categories
+    .flatMap((category) => category.checks)
+    .find((item) => item.id === "seo-sitemap");
+
+  assert.equal(sitemap?.status, "not_measured");
+  assert.match(sitemap?.evidence ?? "", /safe same-origin URL; it was not fetched/);
+  assert.ok(!requests.some(({ url }) => url.startsWith("https://cdn.example/")));
+  assert.ok(
+    !requests.some(
+      ({ url }) => new URL(url).pathname === "/sitemap.xml",
+    ),
+  );
 });
 
 test("an audit with too few scored categories does not show a global score", async () => {
