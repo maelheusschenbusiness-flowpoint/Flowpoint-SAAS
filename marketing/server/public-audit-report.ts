@@ -181,6 +181,23 @@ function notMeasured(
   );
 }
 
+function notMeasuredForHttpError(
+  check: PublicAuditCheck,
+  status: number,
+): PublicAuditCheck {
+  return makeCheck(
+    check.id,
+    check.title,
+    "not_measured",
+    "info",
+    `HTTP ${status}`,
+    `This page-specific check was not scored because the requested page returned HTTP ${status}; the response body may be an error page.`,
+    "Metadata and content from an error response may not describe the requested page.",
+    "Re-run the audit after the requested page returns a successful response.",
+    null,
+  );
+}
+
 export function scorePublicAuditCategory(
   key: PublicAuditCategoryKey,
   checks: PublicAuditCheck[],
@@ -329,12 +346,14 @@ async function getPageSupportingData(
     input: string,
     options?: PublicFetchOptions,
   ) => Promise<PublicFetchResult> = safePublicFetch,
+  includePageResources = true,
 ) {
   const base = new URL(pageUrl);
   const elements = collectElements(root);
+  const pageResourceElements = includePageResources ? elements : [];
   const cssUrls = Array.from(
     new Set(
-      elements
+      pageResourceElements
         .filter(
           (element) =>
             elementName(element) === "link" &&
@@ -354,7 +373,7 @@ async function getPageSupportingData(
 
   const assetUrls = Array.from(
     new Set(
-      elements
+      pageResourceElements
         .filter((element) =>
           ["img", "script", "iframe"].includes(elementName(element)),
         )
@@ -371,7 +390,7 @@ async function getPageSupportingData(
 
   const linkUrls = Array.from(
     new Set(
-      elements
+      pageResourceElements
         .filter((element) => elementName(element) === "a")
         .map((element) =>
           getAttribute(element, "href")?.trim() ?? "",
@@ -423,25 +442,44 @@ async function getPageSupportingData(
     runLimited(linkUrls, MAX_AUXILIARY_CONCURRENCY, fetchHead),
   ]);
 
-  let sitemapUrl = defaultSitemapUrl;
-  if (robots) {
+  let sitemapUrl: string | null = defaultSitemapUrl;
+  let sitemapAdvertised = false;
+  let sitemapSkippedForOrigin = false;
+  if (robots && robots.status >= 200 && robots.status < 300) {
     const sitemapDirective = robots.body
       .toString("utf8")
       .slice(0, 64 * 1024)
       .match(/^\s*sitemap\s*:\s*(\S+)/im)?.[1];
     if (sitemapDirective) {
-      sitemapUrl =
-        sameOriginUrl(sitemapDirective, base) ?? defaultSitemapUrl;
+      const sameOriginSitemap = sameOriginUrl(sitemapDirective, base);
+      if (sameOriginSitemap) {
+        sitemapUrl = sameOriginSitemap;
+        sitemapAdvertised = true;
+      } else {
+        sitemapUrl = null;
+        sitemapSkippedForOrigin = true;
+      }
     }
   }
-  const sitemap = await fetcher(sitemapUrl, {
-    maxBytes: 64 * 1024,
-    maxRedirects: 1,
-    expectedOrigin: base.origin,
-    signal,
-  }).catch(() => null);
+  const sitemap = sitemapUrl
+    ? await fetcher(sitemapUrl, {
+        maxBytes: 64 * 1024,
+        maxRedirects: 1,
+        expectedOrigin: base.origin,
+        signal,
+      }).catch(() => null)
+    : null;
 
-  return { robots, sitemap, css, assets, internalLinks, elements };
+  return {
+    robots,
+    sitemap,
+    sitemapAdvertised,
+    sitemapSkippedForOrigin,
+    css,
+    assets,
+    internalLinks,
+    elements,
+  };
 }
 
 export async function createPublicAuditReport(
@@ -488,11 +526,24 @@ export async function createPublicAuditReport(
       elementName(element) === "meta" &&
       getAttribute(element, "name")?.toLowerCase() === "description",
   );
-  const descriptionValues = metaDescriptions
-    .map((element) => getAttribute(element, "content")?.trim() ?? "")
-    .filter(Boolean);
+  const descriptionTags = metaDescriptions.map(
+    (element) =>
+      (getAttribute(element, "content") ?? "").replace(/\s+/g, " ").trim(),
+  );
+  const descriptionValues = descriptionTags.filter(Boolean);
+  const uniqueDescriptionValues = Array.from(new Set(descriptionValues));
+  const hasConflictingDescriptions =
+    uniqueDescriptionValues.length > 1 ||
+    (descriptionValues.length > 0 &&
+      descriptionValues.length !== descriptionTags.length);
+  const hasConsistentDuplicateDescriptions =
+    descriptionTags.length > 1 &&
+    !hasConflictingDescriptions &&
+    uniqueDescriptionValues.length === 1;
   const description =
-    metaDescriptions.length === 1 ? descriptionValues[0] ?? "" : "";
+    !hasConflictingDescriptions && uniqueDescriptionValues.length === 1
+      ? uniqueDescriptionValues[0]
+      : "";
   const canonicalElements = elements.filter(
     (element) =>
       elementName(element) === "link" && hasRelToken(element, "canonical"),
@@ -513,6 +564,28 @@ export async function createPublicAuditReport(
   );
   const h1s = headings.filter((element) => elementName(element) === "h1");
   const pageUrl = new URL(page.finalUrl);
+  const pageDocumentAvailable =
+    page.status >= 200 && page.status < 300 && page.status !== 204;
+  const canonicalTargets = canonicalElements.map((element) =>
+    sameOriginUrl(getAttribute(element, "href")?.trim() ?? "", pageUrl),
+  );
+  const canonicalTargetKeys = canonicalTargets.map((target) => {
+    if (!target) return null;
+    const url = new URL(target);
+    return `${url.origin}${url.pathname}`;
+  });
+  const uniqueCanonicalTargets = Array.from(
+    new Set(canonicalTargetKeys.filter((target): target is string => Boolean(target))),
+  );
+  const canonicalTargetsConsistent =
+    canonicalElements.length > 0 &&
+    canonicalTargetKeys.every((target) => Boolean(target)) &&
+    uniqueCanonicalTargets.length === 1;
+  const hasConsistentDuplicateCanonicals =
+    canonicalElements.length > 1 && canonicalTargetsConsistent;
+  const canonicalUrl = canonicalTargetsConsistent
+    ? canonicalTargets.find((target): target is string => Boolean(target)) ?? null
+    : null;
   const base = `${pageUrl.origin}${pageUrl.pathname}`;
   const pageText = normalizeText(visibleText(document));
   const words =
@@ -596,6 +669,7 @@ export async function createPublicAuditReport(
     document,
     signal,
     fetcher,
+    pageDocumentAvailable,
   );
   const externalCssContents = support.css
     .filter(
@@ -616,7 +690,10 @@ export async function createPublicAuditReport(
   const failedAssets = measuredAssets.filter(
     (item) => item.response!.status < 200 || item.response!.status >= 300,
   );
-  const robotsDisallow = support.robots
+  const robotsDisallow =
+    support.robots &&
+    support.robots.status >= 200 &&
+    support.robots.status < 300
     ? scanRobotsDisallow(support.robots.body)
     : null;
   const robotsHeader = header(page.headers, "x-robots-tag") ?? "";
@@ -625,11 +702,6 @@ export async function createPublicAuditReport(
     "content",
   ) ?? "";
   const noIndex = /\bnoindex\b/i.test(`${metaRobots} ${robotsHeader}`);
-  const canonicalRaw = getAttribute(canonical ?? { nodeName: "" }, "href") ?? "";
-  const canonicalUrl =
-    canonical && canonicalElements.length === 1
-      ? sameOriginUrl(canonicalRaw, pageUrl)
-      : null;
   const lang =
     getAttribute(first("html") ?? { nodeName: "" }, "lang")?.trim() ?? "";
   const hasJsonLd = byTag("script").filter(
@@ -705,6 +777,21 @@ export async function createPublicAuditReport(
     (item) => item.response!.status >= 300 && item.response!.status < 400,
   ).length;
   const anchorStatus = unresolvedAnchors === 0 ? "passed" : "warning";
+  const robotsFileMissing = Boolean(
+    support.robots && [404, 410].includes(support.robots.status),
+  );
+  const optionalSitemapMissing = Boolean(
+    support.sitemap &&
+      !support.sitemapAdvertised &&
+      [404, 410].includes(support.sitemap.status),
+  );
+  const checksIndependentOfPageDocument = new Set([
+    "seo-robots",
+    "seo-sitemap",
+    "technical-http-status",
+    "technical-redirects",
+    "technical-robots",
+  ]);
 
   const resultByKey: Record<PublicAuditCategoryKey, PublicAuditCheck[]> = {
     seo: [
@@ -725,20 +812,22 @@ export async function createPublicAuditReport(
       makeCheck(
         "seo-description",
         "Meta description",
-        metaDescriptions.length > 1
+        hasConflictingDescriptions || hasConsistentDuplicateDescriptions
           ? "warning"
           : description
             ? classifyThreshold(descriptionLength, 160, 200)
             : "failed",
-        "medium",
-        metaDescriptions.length > 1
-          ? `${metaDescriptions.length} meta description tags were found; their signals conflict.`
+        hasConsistentDuplicateDescriptions ? "low" : "medium",
+        hasConflictingDescriptions
+          ? `${metaDescriptions.length} meta description tags have different or empty values; their signals conflict.`
+          : hasConsistentDuplicateDescriptions
+            ? `${metaDescriptions.length} identical meta description tags were found; the text agrees but the markup is duplicated.`
           : description
             ? `${descriptionLength} characters`
             : "No non-empty meta description was found.",
         "The audit reads the description meta tag from the HTML response.",
         "A useful description can help people understand the page before opening it.",
-        metaDescriptions.length > 1
+        hasConflictingDescriptions || hasConsistentDuplicateDescriptions
           ? "Keep one page-specific meta description and remove duplicate tags."
           : description
             ? "Write a clear summary and keep it concise."
@@ -748,9 +837,11 @@ export async function createPublicAuditReport(
         "seo-canonical",
         "Canonical URL",
         canonicalElements.length === 1 && canonicalUrl ? "passed" : "warning",
-        "medium",
-        canonicalElements.length > 1
-          ? `${canonicalElements.length} canonical links were found; the preferred URL is ambiguous.`
+        hasConsistentDuplicateCanonicals ? "low" : "medium",
+        hasConsistentDuplicateCanonicals
+          ? `${canonicalElements.length} canonical links point to the same URL; the target is consistent but the markup is duplicated.`
+          : canonicalElements.length > 1
+            ? `${canonicalElements.length} canonical links have different or invalid targets; the preferred URL is ambiguous.`
           : canonicalUrl
             ? `One same-site canonical URL points to ${new URL(canonicalUrl).origin}${new URL(canonicalUrl).pathname}.`
             : canonical
@@ -758,8 +849,10 @@ export async function createPublicAuditReport(
               : "No canonical link was found.",
         "The audit checks whether a canonical URL is present and points to this public site.",
         "A clear canonical URL can reduce ambiguity between duplicate page URLs.",
-        canonicalElements.length > 1
-          ? "Keep one canonical link and verify that it points to the preferred page URL."
+        hasConsistentDuplicateCanonicals
+          ? "Keep one canonical link; the current target is consistent."
+          : canonicalElements.length > 1
+            ? "Keep one canonical link and verify that it points to the preferred page URL."
           : canonical
             ? "Use one valid same-site canonical URL that identifies the preferred version of this page."
             : "Add a canonical link that identifies the preferred version of this page.",
@@ -806,36 +899,60 @@ export async function createPublicAuditReport(
       makeCheck(
         "seo-robots",
         "Robots.txt response",
+        robotsFileMissing
+          ? "not_measured"
+          : support.robots
+            ? support.robots.status >= 200 && support.robots.status < 300
+              ? "passed"
+              : "warning"
+            : "not_measured",
+        robotsFileMissing ? "info" : "low",
         support.robots
-          ? support.robots.status >= 200 && support.robots.status < 300
-            ? "passed"
-            : "warning"
-          : "not_measured",
-        "low",
-        support.robots
-          ? `HTTP ${support.robots.status}`
+          ? `HTTP ${support.robots.status}${robotsFileMissing ? "; no robots rules file was found" : ""}`
           : "The robots.txt endpoint could not be measured.",
-        "The audit requests only the site's robots.txt file.",
-        "Robots.txt can communicate crawl preferences to compliant search crawlers.",
-        "Check the file directly if you rely on crawler-specific rules.",
-        support.robots ? "easy" : null,
+        robotsFileMissing
+          ? "A missing robots.txt file does not prevent crawling; it means no custom crawler rules were published."
+          : "The audit requests only the site's robots.txt file.",
+        robotsFileMissing
+          ? "The absence of this optional file is not an access error by itself."
+          : "Robots.txt can communicate crawl preferences to compliant search crawlers.",
+        robotsFileMissing
+          ? "Add robots.txt only if the site needs custom crawler rules."
+          : "Check the file directly if you rely on crawler-specific rules.",
+        support.robots && !robotsFileMissing ? "easy" : null,
       ),
       makeCheck(
         "seo-sitemap",
         "Sitemap response",
-        support.sitemap
-          ? support.sitemap.status >= 200 && support.sitemap.status < 300
-            ? "passed"
-            : "warning"
-          : "not_measured",
-        "low",
-        support.sitemap
+        support.sitemapSkippedForOrigin || optionalSitemapMissing
+          ? "not_measured"
+          : support.sitemap
+            ? support.sitemap.status >= 200 && support.sitemap.status < 300
+              ? "passed"
+              : "warning"
+            : "not_measured",
+        support.sitemapSkippedForOrigin || optionalSitemapMissing
+          ? "info"
+          : "low",
+        support.sitemapSkippedForOrigin
+          ? "The sitemap directive did not resolve to a safe same-origin URL; it was not fetched."
+          : optionalSitemapMissing
+            ? `HTTP ${support.sitemap!.status}; no same-origin sitemap was advertised, and this endpoint is optional.`
+            : support.sitemap
           ? `HTTP ${support.sitemap.status}${responseContentType(support.sitemap) ? ` · ${responseContentType(support.sitemap)}` : ""}`
           : "The sitemap endpoint could not be measured.",
         "The audit checks the sitemap URL advertised in robots.txt, or /sitemap.xml when none is advertised.",
         "A sitemap can help crawlers discover pages, but this check does not validate every listed URL.",
-        "Verify the sitemap contains canonical, indexable URLs.",
-        support.sitemap ? "easy" : null,
+        support.sitemapSkippedForOrigin
+          ? "Review the declared sitemap manually; this audit does not fetch invalid or cross-origin targets."
+          : optionalSitemapMissing
+            ? "A sitemap is optional; publish one if it helps crawlers discover the site's pages."
+            : "Verify the sitemap contains canonical, indexable URLs.",
+        support.sitemap &&
+          !support.sitemapSkippedForOrigin &&
+          !optionalSitemapMissing
+          ? "easy"
+          : null,
       ),
     ],
     performance: [
@@ -1301,19 +1418,29 @@ export async function createPublicAuditReport(
       makeCheck(
         "technical-robots",
         "Robots.txt availability",
+        robotsFileMissing
+          ? "not_measured"
+          : support.robots
+            ? support.robots.status < 400
+              ? "passed"
+              : "warning"
+            : "not_measured",
+        robotsFileMissing ? "info" : "low",
         support.robots
-          ? support.robots.status < 400
-            ? "passed"
-            : "warning"
-          : "not_measured",
-        "low",
-        support.robots ? `HTTP ${support.robots.status}` : null,
-        "Only the standard /robots.txt endpoint is requested.",
-        "Crawler rules should match the site's publishing intent.",
-        robotsDisallow
-          ? "The file disallows all paths for at least one user-agent section; review that rule if unintended."
-          : "Review the file if your crawler preferences change.",
-        support.robots ? "easy" : null,
+          ? `HTTP ${support.robots.status}${robotsFileMissing ? "; no robots rules file was found" : ""}`
+          : null,
+        robotsFileMissing
+          ? "A missing robots.txt file leaves no custom crawl rules; it does not block crawling by itself."
+          : "Only the standard /robots.txt endpoint is requested.",
+        robotsFileMissing
+          ? "The absence of this optional file is not an access error by itself."
+          : "Crawler rules should match the site's publishing intent.",
+        robotsFileMissing
+          ? "Add robots.txt only if the site needs custom crawler rules."
+          : robotsDisallow
+            ? "The file disallows all paths for at least one user-agent section; review that rule if unintended."
+            : "Review the file if your crawler preferences change.",
+        support.robots && !robotsFileMissing ? "easy" : null,
       ),
       notMeasured(
         "technical-javascript-runtime",
@@ -1376,7 +1503,7 @@ export async function createPublicAuditReport(
         "Search snippet copy",
         title && description ? "passed" : "warning",
         "low",
-        `Title: ${title ? "present" : "missing"}; description: ${metaDescriptions.length > 1 ? `ambiguous (${metaDescriptions.length} tags)` : description ? "present" : "missing"}.`,
+        `Title: ${title ? "present" : "missing"}; description: ${hasConflictingDescriptions ? `conflicting (${metaDescriptions.length} tags)` : hasConsistentDuplicateDescriptions ? `duplicate but consistent (${metaDescriptions.length} tags)` : description ? "present" : "missing"}.`,
         "The audit checks whether the page has title and description text, not whether claims are accurate.",
         "Clear summaries set expectations before a visit.",
         "Write a concise summary that accurately reflects this page.",
@@ -1395,7 +1522,14 @@ export async function createPublicAuditReport(
   };
 
   const categories = PUBLIC_AUDIT_CATEGORIES.map(({ key }) =>
-    scorePublicAuditCategory(key, resultByKey[key]),
+    scorePublicAuditCategory(
+      key,
+      resultByKey[key].map((check) =>
+        pageDocumentAvailable || checksIndependentOfPageDocument.has(check.id)
+          ? check
+          : notMeasuredForHttpError(check, page.status),
+      ),
+    ),
   );
   const scoredCategories = categories
     .map((category) => category.score)
