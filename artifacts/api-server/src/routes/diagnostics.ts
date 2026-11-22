@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getStripeKey as getResolvedStripeKey } from "../services/stripe-factory.js";
 import { pool, db, auditsTable, monitorsTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
@@ -136,7 +137,7 @@ router.get("/diagnostics", async (_req, res) => {
   // ── Dedicated environment variable inventory ───────────────────────────────
   const ENV_VARS: Record<string, string | undefined> = {
     OPENAI_API_KEY:               process.env["OPENAI_API_KEY"],
-    STRIPE_SECRET_KEY:            process.env["STRIPE_SECRET_KEY"],
+    STRIPE_SECRET_KEY:            getResolvedStripeKey() || undefined,
     STRIPE_WEBHOOK_SECRET:        process.env["STRIPE_WEBHOOK_SECRET"],
     STRIPE_WEBHOOK_SECRET_RENDER: process.env["STRIPE_WEBHOOK_SECRET_RENDER"],
     BETTERSTACK_API_TOKEN:        process.env["BETTERSTACK_API_TOKEN"],
@@ -281,7 +282,7 @@ router.get("/diagnostics/integrations", async (_req, res) => {
   const integrations: ProbeResult[] = [];
 
   // ── Stripe (API key → live probe) ─────────────────────────────────────────
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getResolvedStripeKey();
   if (stripeKey) {
     const p = await probeApi(
       "https://api.stripe.com/v1/balance",
@@ -481,7 +482,7 @@ router.get("/diagnostics/integrations", async (_req, res) => {
 
 // ── Billing / Stripe status ───────────────────────────────────────────────────
 router.get("/diagnostics/billing", async (_req, res) => {
-  const stripeKeyPresent     = !!(process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"]);
+  const stripeKeyPresent     = !!getResolvedStripeKey();
   const webhookSecretPresent = !!process.env["STRIPE_WEBHOOK_SECRET"];
   const webhookRenderPresent = !!process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
 
@@ -501,7 +502,7 @@ router.get("/diagnostics/billing", async (_req, res) => {
     const t0 = Date.now();
     try {
       const resp = await fetch("https://api.stripe.com/v1/balance", {
-        headers: { Authorization: `Bearer ${process.env["STRIPE_SECRET_KEY"]}` },
+        headers: { Authorization: `Bearer ${getResolvedStripeKey()}` },
         signal: AbortSignal.timeout(3000),
       });
       stripeApiLatencyMs = Date.now() - t0;

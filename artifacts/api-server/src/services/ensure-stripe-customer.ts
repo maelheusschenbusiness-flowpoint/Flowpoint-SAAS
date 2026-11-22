@@ -1,3 +1,4 @@
+import { getStripeKey as getResolvedStripeKey } from "./stripe-factory.js";
 /**
  * ensure-stripe-customer.ts — P0 Stripe Customer Guarantee (v4)
  *
@@ -130,9 +131,7 @@ async function _runWithLock(
 ): Promise<string> {
   const key =
     stripeKeyOverride ??
-    process.env["STRIPE_LIVE_API_KEY"] ??
-    process.env["STRIPE_SECRET_KEY"] ??
-    "";
+    getResolvedStripeKey();
   if (!key) throw new Error("[ensureStripeCustomer] No Stripe key configured");
 
   // Resolve the Stripe client.  In tests _stripeForTest is injected via
