@@ -32,6 +32,12 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Surcharge de prix TEST d'un paquet (chargee avec le catalogue) : sert a verifier que la
+// synchronisation utilise le prix TEST avec une cle sk_test_ (mock par defaut) et pas le prix LIVE.
+vi.hoisted(() => {
+  process.env["STRIPE_TEST_PRICE_ID_ADDON_AUDITS200"] = "price_TEST_AUDITS200_override";
+});
+
 // ─── Shared state captured by mocks ──────────────────────────────────────────
 
 // Stripe API call recorder
@@ -673,5 +679,28 @@ describe("P0-B — structural invariants", () => {
     expect(result.reason).toBe("not_on_subscription");
     expect(calls.subscriptionItemsDel).toHaveLength(0);
     expect(calls.subscriptionsCancel).toHaveLength(0);
+  });
+});
+
+describe("prix TEST : la synchronisation utilise la surcharge TEST avec une cle sk_test_", () => {
+  it("cle sk_test_ => prix TEST ; cle LIVE => prix LIVE inchange", async () => {
+    const { ADDON_PRICE_IDS } = await import("../lib/plans.js");
+    const { getStripeKey } = await import("../services/stripe-factory.js");
+    const { syncAddonWithStripe } = await import("./addon-stripe-sync.js");
+    vi.mocked(getStripeKey).mockReturnValueOnce("sk_test_fake");
+    await syncAddonWithStripe("org-test-uuid", "auditsPack200", "activate", 1);
+    expect((calls.subscriptionsCreate[0]!["items"] as Array<{ price: string }>)[0]!.price).toBe("price_TEST_AUDITS200_override");
+    calls.subscriptionsCreate = [];
+    mockAddonSub = null;
+    vi.mocked(getStripeKey).mockReturnValueOnce("sk_live_fake");
+    await syncAddonWithStripe("org-test-uuid", "auditsPack200", "activate", 1);
+    expect((calls.subscriptionsCreate[0]!["items"] as Array<{ price: string }>)[0]!.price).toBe(ADDON_PRICE_IDS["auditsPack200"]);
+  });
+
+  it("le prix TEST est reconnu en retour (webhook) sans toucher aux prix LIVE", async () => {
+    const { getAddonForPriceId, ADDON_PRICE_IDS } = await import("../lib/plans.js");
+    expect(getAddonForPriceId("price_TEST_AUDITS200_override")).toBe("auditsPack200");
+    expect(getAddonForPriceId(ADDON_PRICE_IDS["auditsPack200"]!)).toBe("auditsPack200");
+    expect(getAddonForPriceId("price_inconnu")).toBeNull();
   });
 });

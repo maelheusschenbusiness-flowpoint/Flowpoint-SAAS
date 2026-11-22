@@ -630,6 +630,10 @@ export function getAddonForPriceId(priceId: string): string | null {
   for (const [addon, id] of Object.entries(ADDON_PRICE_IDS)) {
     if (id && id === priceId) return addon;
   }
+  // Prix de surcharge TEST (vide en production : aucune variable STRIPE_TEST_PRICE_ID_ADDON_* posee).
+  for (const [addon, id] of Object.entries(ADDON_PRICE_IDS_TEST)) {
+    if (id && id === priceId) return addon;
+  }
   return null;
 }
 

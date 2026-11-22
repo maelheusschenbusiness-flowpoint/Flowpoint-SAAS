@@ -28,7 +28,7 @@
  *   new billing cycle and prorations.
  */
 
-import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getPlanForPriceId } from "../lib/plans.js";
+import { getAddonPriceId, PLAN_INCLUDED_ADDONS, getPlanForPriceId } from "../lib/plans.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey } from "./stripe-factory.js";
 import { logger } from "../lib/logger.js";
@@ -160,7 +160,8 @@ async function syncAddonWithStripeUnlocked(
   if (!stripeKey) return { synced: false, reason: "no_stripe_key" };
   if (ONE_TIME_ADDONS.has(addonKey)) return { synced: false, reason: "one_time_addon" };
 
-  const priceId = ADDON_PRICE_IDS[addonKey];
+  // Prix selon le mode de la cle : surcharge TEST en mode test, prix LIVE sinon (inchange en production).
+  const priceId = getAddonPriceId(addonKey, stripeKey);
   if (!priceId) return { synced: false, reason: "no_price_id" };
 
   try {
