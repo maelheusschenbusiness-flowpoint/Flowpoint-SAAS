@@ -78,5 +78,25 @@ Resultat du rejeu : controle 1 bis (prix TEST porte par l'abonnement d'add-on) E
 
 Nettoyage du rejeu : abonnements de plan annules (`canceled`, `cancellation_requested`, 12:56Z) `sub_1Uea8B9eqtbj6iPBsP8ucPVj`, `sub_1Uea8S9eqtbj6iPBXa4fCAJA`, `sub_1Uea8j9eqtbj6iPBEjqFS3iU`, `sub_1Uea909eqtbj6iPBdqrXtiYx`. Clients TEST non supprimables : `cus_Vfw0W8IZcOB2Tv`, `cus_Vfw0Dw5aFtZQGk`, `cus_Vfw0joiFNN72jE`, `cus_Vfw0Dz8D6R9lhY`. Aucun abonnement d'add-on, aucune facture payee, aucun objet LIVE.
 
+## Deuxieme rejeu du 22 novembre (13:19-13:25Z) apres le correctif `6885efbd` (`dep-dc1edvs3eqjs73ft3jd0`, live 13:05Z)
+4 nouvelles organisations Standard (inscription navigateur 13:19-13:20Z, `finalize-checkout` 200), etat avant achat : `trialing`, current_period_end NULL, limites 30/30/30.
+
+| Etiquette | Org | Client | Abonnement plan | trial_ends_at / updated_at |
+|---|---|---|---|---|
+| b200 | `f31d5ec9-8d69-416e-93ec-f828d616f145` | `cus_VfwZUCxM1QSG0r` | `sub_1UeagF9eqtbj6iPBSWeWoR7o` | 2026-12-06 13:19:43+00 / 13:19:45.369382 |
+| b1000 | `40da2f00-4e9b-41ae-bfca-4c4079f87d52` | `cus_VfwZvbJhkfBq8X` | `sub_1UeagW9eqtbj6iPBkqsRKmmh` | 13:19:59+00 / 13:20:02.103115 |
+| q200 | `db2cd6cb-ee11-4c99-8461-ae1bc676c74e` | `cus_VfwZPW0vvvAczg` | `sub_1Ueagn9eqtbj6iPB5tRtJgDY` | 13:20:17+00 / 13:20:19.415381 |
+| f1000 | `06d20a46-82c3-4de4-83db-f63aad73ba59` | `cus_Vfwa0XcWx7avQK` | `sub_1Ueah49eqtbj6iPB1fdAtOZ9` | 13:20:34+00 / 13:20:36.795918 |
+
+Achat quantite 1 : **502 `stripe_error` sur les 4** (b200 13:21:10Z, b1000 13:21:30Z, q200 13:21:50Z, f1000 13:22:09Z), limites restees a 30/30/30, `trialing`.
+
+Progres : le prix TEST est desormais utilise. Journal Render b200 (13:21:14Z) : cle d'idempotence `addon-sub:f31d5ec9-...:price_1U4p1Z9eqtbj6iPBMK549pDG:...` (prix TEST d'auditsPack200). Controle 1 bis : le **prix TEST est bien transmis a Stripe** ; faute d'abonnement cree, la presence du prix sur un abonnement reel reste NON VERIFIEE.
+
+**Nouvelle cause racine (defaut 6, bloquant)** : `artifacts/api-server/src/services/addon-stripe-sync.ts` l.116-124 (commit `6885efbd`), `stripe.subscriptions.create({... billing_cycle_anchor: "now", payment_behavior: "default_incomplete" ...})`. Stripe refuse : « The parameter `billing_cycle_anchor` expects a unix timestamp representing a date and time in the future. You specified the value `now` which is in the past. » (`"now"` n'est valide que pour une mise a jour, pas pour une creation.) La version de Test-Replit omet `billing_cycle_anchor` et utilise `payment_behavior: "error_if_incomplete"` (l.17-18, 116-123), ce qui est aussi plus sur : `default_incomplete` laisserait un abonnement impaye en attente de paiement sans refuser l'activation. Aucun abonnement d'add-on n'est cree : la requete est rejetee avant creation.
+
+Resultat : controles 3, 4, 6, 7 **NON VERIFIES** (precondition impossible), controle 5 non exerce par un achat (plan `trialing` inchange). Arret.
+
+Nettoyage : abonnements de plan annules (13:24-13:25Z, `canceled`, `cancellation_requested`) `sub_1UeagF9eqtbj6iPBSWeWoR7o`, `sub_1UeagW9eqtbj6iPBkqsRKmmh`, `sub_1Ueagn9eqtbj6iPB5tRtJgDY`, `sub_1Ueah49eqtbj6iPB1fdAtOZ9`. Clients TEST non supprimables : `cus_VfwZUCxM1QSG0r`, `cus_VfwZvbJhkfBq8X`, `cus_VfwZPW0vvvAczg`, `cus_Vfwa0XcWx7avQK`. Aucun abonnement d'add-on, aucune facture payee, aucun objet LIVE.
+
 ## Reprise
-Les variables ont ete posees mais le defaut 5 (`addon-stripe-sync.ts` l.164 : `ADDON_PRICE_IDS[addonKey]` au lieu de `getAddonPriceId(addonKey, stripeKey)`) les rend inoperantes. Apres correction de ce defaut et redeploiement, rejouer les controles 3 a 7 avec des organisations Standard ; la methode, les scripts (inscription navigateur, login-verify, snapshots `/api/addons` `/api/me` `/api/billing/usage`) sont prets.
+Defaut 5 corrige par `6885efbd` ; defaut 6 restant (`billing_cycle_anchor: "now"` a la creation, l.122). Apres correction (reprendre la creation de Test-Replit : pas d'ancre, `error_if_incomplete`) et redeploiement, rejouer les controles 3 a 7 avec des organisations Standard ; la methode, les scripts (inscription navigateur, login-verify, snapshots `/api/addons` `/api/me` `/api/billing/usage`) sont prets.
