@@ -444,7 +444,6 @@ export const BETA_ADDONS = new Set<string>([
   "marketIntelligence",
   // Dépendance OAuth externe
   "aiGbpPosting",
-  "zapierIntegration",
   // Route /seo/backlinks réelle + requireAddon gate. DFS backlink integration
   // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
   "backlinkIntelligence",
@@ -586,11 +585,11 @@ const _STANDARD_PURCHASABLE = new Set<string>([
 const _PRO_EXCLUSIVE = new Set<string>([
   // NOTE: COMING_SOON_ADDONS must never appear here — they are not purchasable.
   // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
-  //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
+  //          crmIntegration, aiExecutiveReport, aiWorkflows, localDominationMaps,
+  //          zapierIntegration (all COMING_SOON)
   "keywordDomination",
-  "aiGbpPosting", "localDominationMaps",
+  "aiGbpPosting",
   "aiCro", "behavioralAI", "revenueLeak",
-  "zapierIntegration",
   "aiForecasting", "marketIntelligence",
   "enterprisePermissions",
 ]);
