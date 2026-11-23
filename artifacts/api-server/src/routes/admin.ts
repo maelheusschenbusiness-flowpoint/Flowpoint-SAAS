@@ -13,6 +13,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { getStripeKey as getResolvedStripeKey } from "../services/stripe-factory.js";
 import { timingSafeEqual } from "node:crypto";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { pool, withOrgDb } from "@workspace/db";
@@ -2141,7 +2142,7 @@ router.post("/admin/adopt-canonical-stripe-customer", async (req: Request, res: 
     const previousCustomerId = orgRow.rows[0].stripe_customer_id ?? null;
 
     // 2 — Verify customer exists in Stripe (read-only probe)
-    const stripeKey = process.env.STRIPE_LIVE_API_KEY ?? process.env.STRIPE_SECRET_KEY ?? "";
+    const stripeKey = getResolvedStripeKey();
     if (!stripeKey) { res.status(500).json({ ok: false, error: "No Stripe key configured" }); return; }
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });

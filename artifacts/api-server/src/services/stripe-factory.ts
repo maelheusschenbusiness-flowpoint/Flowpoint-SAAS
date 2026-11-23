@@ -59,18 +59,23 @@ export async function createStripeClient(key: string): Promise<StripeAlike> {
  *   if NODE_ENV=production and the resolved key is sk_test_, the server
  *   refuses to start with a fatal log and process.exit(1).
  *
- * Otherwise: falls back to STRIPE_LIVE_API_KEY → STRIPE_SECRET_KEY (live mode).
+ * In test mode with a missing/invalid test key: returns "" (never a LIVE key).
+ * Otherwise (STRIPE_TEST_MODE not true): STRIPE_LIVE_API_KEY → STRIPE_SECRET_KEY (live mode).
  *
  * All billing routes must call getStripeKey() so that enabling/disabling test
  * mode requires only an env-var flip, not code changes.
  */
+export function isStripeTestMode(): boolean {
+  return process.env["STRIPE_TEST_MODE"] === "true";
+}
+
 export function getStripeKey(): string {
-  // When STRIPE_TEST_MODE=true and a valid sk_test_ key is available,
-  // use it regardless of NODE_ENV. The sk_test_ prefix is the safety gate —
-  // a live key can never be substituted as a test key.
-  if (process.env["STRIPE_TEST_MODE"] === "true") {
+  // Environnement TEST : seule une cle sk_test_ valide est utilisable. Si elle est absente
+  // ou invalide, on renvoie "" : un environnement TEST ne retombe JAMAIS sur une cle LIVE
+  // (STRIPE_LIVE_API_KEY / STRIPE_SECRET_KEY), meme si ces variables sont presentes.
+  if (isStripeTestMode()) {
     const testKey = process.env["STRIPE_TEST_KEY"] || process.env["STRIPE_TEST_SECRET_KEY"];
-    if (testKey?.startsWith("sk_test_")) return testKey;
+    return testKey?.startsWith("sk_test_") ? testKey : "";
   }
   return process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"] || "";
 }
