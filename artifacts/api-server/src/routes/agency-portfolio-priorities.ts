@@ -28,6 +28,10 @@ function domainFromUrl(value: unknown): string {
   }
 }
 
+// GSC reports pages under the property's canonical host ("example.com") while audits may have
+// been run on "www.example.com" (or the reverse): match them on the host without "www.".
+const clickKey = (domain: string) => domain.replace(/^www\./, "");
+
 router.use("/agency-portfolio-priorities", requireAddon("agencyPortfolioPriorities", "Agency Portfolio Priorities"));
 
 router.get("/agency-portfolio-priorities", async (req, res) => {
@@ -66,7 +70,7 @@ router.get("/agency-portfolio-priorities", async (req, res) => {
     const clicksByDomain = new Map<string, number>();
     for (const row of clicks.rows) {
       const domain = domainFromUrl(row["page"]);
-      if (domain) clicksByDomain.set(domain, (clicksByDomain.get(domain) ?? 0) + Number(row["clicks"] ?? 0));
+      if (domain) clicksByDomain.set(clickKey(domain), (clicksByDomain.get(clickKey(domain)) ?? 0) + Number(row["clicks"] ?? 0));
     }
     const snapshots: PortfolioSiteSnapshot[] = [];
     for (const [domain, rows] of byDomain) {
@@ -78,7 +82,7 @@ router.get("/agency-portfolio-priorities", async (req, res) => {
         currentScore: Number(current["score"]),
         previousScore: previous ? Number(previous["score"]) : null,
         criticalIssues: Number(current["issues"] ?? 0),
-        monthlyOrganicClicks: clicksByDomain.has(domain) ? clicksByDomain.get(domain)! : null,
+        monthlyOrganicClicks: clicksByDomain.has(clickKey(domain)) ? clicksByDomain.get(clickKey(domain))! : null,
         priorityWeight: settings.priorityWeights[domain] ?? 3,
       });
     }

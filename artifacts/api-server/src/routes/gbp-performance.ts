@@ -11,6 +11,7 @@ import {
   parseGbpPerformanceSettings,
   summarizeGbpMetrics,
   type GbpPerformanceMetric,
+  GBP_DATA_LAG_DAYS,
 } from "../services/gbp-performance-addon.js";
 import { safeErrMsg } from "../lib/safe-error.js";
 
@@ -84,17 +85,23 @@ router.get("/gbp-performance", async (req, res) => {
       return;
     }
 
-    const now = new Date();
-    const currentStart = new Date(now.getTime() - settings.periodDays * 86_400_000);
-    const previousStart = new Date(currentStart.getTime() - settings.periodDays * 86_400_000);
+    // Whole UTC days, inclusive on both ends, with no overlap between the two periods, ending
+    // GBP_DATA_LAG_DAYS ago: Google finalises daily metrics after a delay, so counting the last
+    // days would show a false drop against the previous (complete) period.
+    const DAY = 86_400_000;
+    const today = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate());
+    const currentEnd = new Date(today - GBP_DATA_LAG_DAYS * DAY);
+    const currentStart = new Date(currentEnd.getTime() - (settings.periodDays - 1) * DAY);
+    const previousEnd = new Date(currentStart.getTime() - DAY);
+    const previousStart = new Date(previousEnd.getTime() - (settings.periodDays - 1) * DAY);
     const [currentRaw, previousRaw] = await Promise.all([
       getGbpPerformanceSeries(tenantId, selected.resourceName, {
         startTime: currentStart.toISOString(),
-        endTime: now.toISOString(),
+        endTime: currentEnd.toISOString(),
       }),
       getGbpPerformanceSeries(tenantId, selected.resourceName, {
         startTime: previousStart.toISOString(),
-        endTime: currentStart.toISOString(),
+        endTime: previousEnd.toISOString(),
       }),
     ]);
     const current = summarizeGbpMetrics(currentRaw);
@@ -110,7 +117,7 @@ router.get("/gbp-performance", async (req, res) => {
       settings: { ...settings, locationId: selected.id },
       locations: locations.map(({ id, name }) => ({ id, name })),
       location: { id: selected.id, name: selected.name },
-      period: { days: settings.periodDays, start: currentStart.toISOString(), end: now.toISOString() },
+      period: { days: settings.periodDays, start: currentStart.toISOString(), end: currentEnd.toISOString() },
       current,
       previous,
       goals: settings.goals,

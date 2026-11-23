@@ -46,6 +46,24 @@ describe("agency-portfolio-priorities routes", () => {
     expect(dbCalls.every(call => call.values[0] === "org-a" && call.sql.includes("org_id=$1"))).toBe(true);
   });
 
+  it("matches GSC clicks to an audited www host", async () => {
+    const app = express();
+    app.use((req, _res, next) => {
+      Object.assign(req, {
+        orgId: "org-w",
+        orgDb: async (sql: string) => {
+          if (sql.includes("agency_portfolio_priority_settings")) return { rows: [] };
+          if (sql.includes("gsc_page_data")) return { rows: [{ page: "https://example.com/a", clicks: 10 }, { page: "https://www.example.com/b", clicks: 5 }] };
+          return { rows: [{ id: "a", url: "https://www.example.com", score: 70, issues: 1, created_at: "2026-10-22T10:00:00Z" }] };
+        },
+      });
+      next();
+    });
+    app.use(router);
+    const response = await request(app).get("/agency-portfolio-priorities").expect(200);
+    expect(response.body.priorities[0]).toMatchObject({ domain: "www.example.com", monthlyOrganicClicks: 15 });
+  });
+
   it("persists validated weights by organization and rejects invalid values", async () => {
     const saved = await request(appFor("org-b"))
       .put("/agency-portfolio-priorities/settings")

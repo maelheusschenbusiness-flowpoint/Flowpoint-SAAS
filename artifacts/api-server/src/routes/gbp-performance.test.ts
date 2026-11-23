@@ -90,6 +90,25 @@ describe("GBP Performance & Leads API", () => {
     expect(mocks.poolQuery).not.toHaveBeenCalled();
   });
 
+  it("compares two disjoint, inclusive day windows that end before Google's data lag", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "loc-a", name: "A", raw_data: { name: "locations/123" } }] });
+    mocks.getValidToken.mockResolvedValue("tok");
+    mocks.getPerformance.mockResolvedValue([]);
+
+    const response = await request(makeApp()).get("/api/gbp-performance");
+    expect(response.status).toBe(200);
+    const [cur, prev] = mocks.getPerformance.mock.calls.map(c => c[2] as { startTime: string; endTime: string });
+    const day = (iso: string) => Math.floor(Date.parse(iso) / 86_400_000);
+    // 30 inclusive days each (default period), previous ends the day before current starts
+    expect(day(cur.endTime) - day(cur.startTime) + 1).toBe(30);
+    expect(day(prev.endTime) - day(prev.startTime) + 1).toBe(30);
+    expect(day(prev.endTime)).toBe(day(cur.startTime) - 1);
+    // Current window does not include the last (not yet finalised) days
+    expect(day(cur.endTime)).toBe(Math.floor(Date.now() / 86_400_000) - 3);
+  });
+
   it("persists valid settings only after confirming the location belongs to the organization", async () => {
     const settings = {
       locationId: "loc-a",

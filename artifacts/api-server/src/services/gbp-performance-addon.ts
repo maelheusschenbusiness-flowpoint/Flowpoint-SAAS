@@ -6,6 +6,9 @@ export const GBP_PERFORMANCE_METRICS = [
   "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
 ] as const;
 
+/** Google finalises Business Profile daily metrics after roughly 2-3 days. */
+export const GBP_DATA_LAG_DAYS = 3;
+
 export type GbpPerformanceMetric = (typeof GBP_PERFORMANCE_METRICS)[number];
 
 export interface GbpPerformanceSettings {

@@ -31,7 +31,8 @@ router.get("/local-landing-opportunities", async (req, res) => {
       db(
         `SELECT keyword, SUM(impressions)::int AS impressions, SUM(clicks)::int AS clicks,
                 CASE WHEN SUM(impressions)=0 THEN 0 ELSE SUM(clicks)::float/SUM(impressions) END AS ctr,
-                AVG(position)::float AS position, MAX(date) AS latest_date
+                CASE WHEN SUM(impressions)=0 THEN AVG(position)::float
+                     ELSE SUM(position*impressions)::float/SUM(impressions) END AS position, MAX(date) AS latest_date
          FROM gsc_keyword_data
          WHERE org_id=$1 AND date >= to_char(CURRENT_DATE - INTERVAL '28 days', 'YYYY-MM-DD')
          GROUP BY keyword
