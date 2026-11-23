@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
 import { injectMetadata, ROUTE_METADATA } from "../server/seo-metadata";
+import { isPublicPath } from "../server/routes/public-paths";
 import {
   getProductionResourceArticles,
   getResourceArticleCanonical,
@@ -18,6 +19,7 @@ import {
   PRICING_TRIAL_FAQ_ANSWER_FR,
   RESOURCE_HUB,
   SEO_AUDIT_FAQS,
+  FREE_SEO_AUDIT_FAQS,
 } from "../shared/structured-data-content";
 import { SEO_CLUSTER_CONTENT } from "../shared/seo-cluster-content";
 import { appendResourceArticlesToSitemap } from "../shared/resource-sitemap";
@@ -67,6 +69,7 @@ test("commercial landing metadata matches the visible page content", () => {
   assert.ok(ROUTE_METADATA["/seo-audit"].description.length >= 150);
   assert.match(audit, /href="\/resources\/audit-seo-pme-priorites"/);
   assert.match(audit, /href="\/resources\/interpreter-resultats-audit-seo"/);
+  assert.match(audit, /href="\/free-seo-audit"/);
 });
 
 test("homepage server schema exactly matches the shared visible English FAQ", () => {
@@ -135,6 +138,25 @@ test("SEO audit server schema matches its visible English FAQ", () => {
   const page = readFileSync("client/src/pages/SeoAudit.tsx", "utf8");
   assert.match(page, /import \{ SEO_AUDIT_FAQS \} from "@shared\/structured-data-content"/);
   assert.match(page, /const faqs = SEO_AUDIT_FAQS/);
+});
+
+test("free SEO audit has distinct, accurate metadata and a production canonical", () => {
+  const metadata = ROUTE_METADATA["/free-seo-audit"];
+  const page = readFileSync("client/src/pages/FreeSeoAudit.tsx", "utf8");
+  const html = injectMetadata(template, "/free-seo-audit");
+
+  assert.ok(metadata);
+  assert.equal(metadata.title, "Free Website SEO Audit, One Page at a Time | FlowPoint");
+  assert.ok(metadata.title.length >= 50 && metadata.title.length <= 65);
+  assert.ok(metadata.description.length >= 150 && metadata.description.length <= 160);
+  assert.match(page, /const PAGE_TITLE = "Free Website SEO Audit, One Page at a Time \| FlowPoint"/);
+  assert.match(page, /usePageTitle\(PAGE_TITLE\)/);
+  assert.match(page, /useJsonLd\(buildFaqPageJsonLd\(FREE_SEO_AUDIT_FAQS\)\)/);
+  assert.ok(isPublicPath("/free-seo-audit"));
+  assert.ok(html.includes(`<link rel="canonical" href="${RESOURCE_SITE_URL}/free-seo-audit"`));
+  assert.deepEqual(jsonLd(html), [buildFaqPageJsonLd(FREE_SEO_AUDIT_FAQS)]);
+  assert.doesNotMatch(html, /<meta name="robots" content="noindex/);
+  assert.match(readFileSync("server/index.ts", "utf8"), /ROBOTS_NOINDEX === "true"[\s\S]*?X-Robots-Tag/);
 });
 
 test("pricing FAQ schema has exact English and French trial disclosures", () => {
@@ -250,6 +272,8 @@ test("discovery files and generated production sitemap advertise canonical URLs 
   }
 
   const generatedUrls = [...generated.matchAll(/<loc>([^<]+)<\/loc>/g)].map(match => match[1]);
+  assert.ok(sitemapUrls.includes(`${RESOURCE_SITE_URL}/free-seo-audit`));
+  assert.ok(guideUrls.includes(`${RESOURCE_SITE_URL}/free-seo-audit`));
   assert.equal(new Set(generatedUrls).size, generatedUrls.length);
   for (const url of [...guideUrls, ...generatedUrls]) {
     const html = injectMetadata(template, new URL(url).pathname);

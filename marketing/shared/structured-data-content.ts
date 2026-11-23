@@ -77,6 +77,39 @@ export const SEO_AUDIT_FAQS: readonly SharedFaq[] = [
   },
 ];
 
+export const FREE_SEO_AUDIT_FAQS: readonly SharedFaq[] = [
+  {
+    question: "What does the free SEO audit check?",
+    answer:
+      "It checks one public page for signals such as its title, meta description, canonical and indexing directives, H1 count, structured-data syntax, basic response and security headers, and a limited sample of same-site links and assets.",
+  },
+  {
+    question: "Does it crawl my whole website?",
+    answer:
+      "No. The audit checks the URL you submit and samples a limited number of same-site links and assets. It does not crawl every page on your website.",
+  },
+  {
+    question: "Does it measure Core Web Vitals?",
+    answer:
+      "No. It does not run a browser-based test or measure LCP, CLS, or INP field data. It checks a few technical response signals, which are not Core Web Vitals measurements.",
+  },
+  {
+    question: "Is this a website security vulnerability scan?",
+    answer:
+      "No. It checks a few basic transport and response-header signals. It does not test application vulnerabilities or replace a security review.",
+  },
+  {
+    question: "Does the report include search rankings or traffic?",
+    answer:
+      "No. The free audit does not connect to Google Search Console, analytics, or ranking data, so it cannot report search impressions, clicks, or keyword positions.",
+  },
+  {
+    question: "Do I need an account to run the audit?",
+    answer:
+      "No account is required. Fair-use limits apply to the public audit.",
+  },
+];
+
 export function buildFaqPageJsonLd(faqs: readonly SharedFaq[]) {
   return {
     "@context": "https://schema.org",
