@@ -158,6 +158,7 @@ export default function Pricing() {
             {plans.map((plan, index) => (
               <motion.div key={index} variants={fadeInUp} className="flex">
                 <Card
+                  id={`plan-${plan.name.toLowerCase()}`}
                   className={`relative flex flex-col w-full ${
                     plan.popular
                       ? "border-2 border-blue-600 shadow-xl"

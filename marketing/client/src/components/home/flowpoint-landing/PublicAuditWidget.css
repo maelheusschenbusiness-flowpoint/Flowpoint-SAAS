@@ -210,9 +210,20 @@
 .fp-audit__impact { color: #afc2eb; font-size: 8px; text-align: right; }
 
 .fp-audit__recommendation { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin: 0 clamp(20px, 4vw, 31px) 20px; padding: 20px; border: 1px solid #3b5580; border-radius: 6px; background: linear-gradient(110deg, #192d4c, #16263e); }
+.fp-audit__recommendation-copy { min-width: 0; flex: 1; }
 .fp-audit__recommendation h4 { margin: 5px 0 4px; color: #edf3fe; font-size: 15px; letter-spacing: -.03em; }
 .fp-audit__recommendation p { max-width: 580px; margin: 0; color: #aab9d0; font-size: 9px; line-height: 1.7; }
-.fp-audit__recommendation-copy > small { display: inline-block; margin-top: 8px; color: #c2d1ee; font-size: 9px; }
+.fp-audit__recommendation .fp-audit__recommendation-price { margin: 5px 0 8px; color: #d4e0fb; font-size: 13px; font-weight: 800; }
+.fp-audit__recommendation-limits { display: block; margin: -3px 0 7px; color: #98abc9; font-size: 8px; }
+.fp-audit__recommendation-reasons { display: grid; gap: 5px; margin: 8px 0 0; padding-left: 17px; color: #b9c7dd; font-size: 9px; line-height: 1.65; }
+.fp-audit__recommendation-features { margin-top: 10px; color: #d8e3f7; font-size: 9px; }
+.fp-audit__recommendation-features ul { display: flex; flex-wrap: wrap; gap: 5px 17px; margin: 5px 0 0; padding-left: 16px; color: #aab9d0; }
+.fp-audit__plan-comparison { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
+.fp-audit__plan-comparison > div { display: grid; gap: 3px; min-width: 0; padding: 9px; border: 1px solid rgba(145, 169, 211, .2); border-radius: 5px; background: rgba(10, 20, 35, .28); }
+.fp-audit__plan-comparison strong { color: #e5edfb; font-size: 9px; }
+.fp-audit__plan-comparison span { color: #d0dcf2; font-size: 9px; font-weight: 700; }
+.fp-audit__plan-comparison small { color: #9eacc1; font-size: 8px; line-height: 1.5; }
+.fp-audit__plan-comparison ul { display: grid; gap: 2px; margin: 4px 0 0; padding-left: 14px; color: #aab9d0; font-size: 8px; line-height: 1.45; }
 .fp-audit__plan-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .fp-audit__plan-links > a { display: inline-flex; min-height: 39px; flex: none; align-items: center; justify-content: center; gap: 8px; padding: 0 13px; border: 1px solid rgba(126, 160, 255, .42); border-radius: 5px; color: white; background: #315fda; font-size: 9px; font-weight: 800; text-decoration: none; transition: background .18s, transform .18s; }
 .fp-audit__plan-links > a:hover { transform: translateY(-1px); background: #416fe7; }
@@ -241,6 +252,7 @@
   .fp-audit__actions li { grid-template-columns: 22px minmax(0, 1fr); }
   .fp-audit__impact { grid-column: 2; text-align: left; }
   .fp-audit__recommendation { align-items: stretch; flex-direction: column; margin-inline: 17px; padding: 16px; }
+  .fp-audit__plan-comparison { grid-template-columns: 1fr; }
   .fp-audit__plan-links { display: grid; grid-template-columns: 1fr; }
   .fp-audit__plan-links > a { width: 100%; }
 }

@@ -17,11 +17,8 @@ import {
   startPublicAuditQuotaCleanup,
 } from "../server/public-audit-quota";
 import { registerPublicAuditRoutes } from "../server/public-audit-routes";
-import {
-  PUBLIC_AUDIT_PLAN_URLS,
-  PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
-} from "../server/public-audit-report";
 import type { PublicAuditReport } from "../shared/public-audit";
+import { PUBLIC_AUDIT_PLAN_CATALOG } from "../shared/public-audit";
 
 const EXPECTED_DATABASE = "public_audit_release_test";
 const SYNTHETIC_URL = "https://example.com/";
@@ -236,16 +233,13 @@ test(
             categories: [],
             actionPlan: [],
             recommendation: {
-              plan: "Standard",
-              priceEur: 29,
-              reason: "Synthetic release validation fixture.",
-              href: PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
-              planLinks: Object.entries(PUBLIC_AUDIT_PLAN_URLS).map(
-                ([plan, href]) => ({
-                  plan: plan as keyof typeof PUBLIC_AUDIT_PLAN_URLS,
-                  href,
-                }),
-              ),
+              status: "compare",
+              plan: null,
+              priceEur: null,
+              reasons: ["Synthetic release validation fixture."],
+              features: [],
+              href: "/pricing",
+              comparisonPlans: PUBLIC_AUDIT_PLAN_CATALOG,
             },
             quota,
           };
@@ -501,9 +495,8 @@ test(
       assert.equal(successfulAudit.status, 200);
       assert.equal(
         (successfulAudit.body.recommendation as { href: string }).href,
-        "https://app.flowpoint.pro/signin.html?plan=standard",
+        "/pricing",
       );
-      assert.equal(PUBLIC_AUDIT_STANDARD_SIGNUP_URL, "https://app.flowpoint.pro/signin.html?plan=standard");
       assert.equal(fixtureState.requests, 1, "the route must use the local fixture only");
       assert.doesNotMatch(
         JSON.stringify(successfulAudit.body),

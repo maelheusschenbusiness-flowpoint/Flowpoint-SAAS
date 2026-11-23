@@ -5,8 +5,12 @@ import type {
   PublicAuditCategory,
   PublicAuditCheck,
   PublicAuditQuota,
+  PublicAuditSeverity,
 } from "@shared/public-audit";
-import { PUBLIC_AUDIT_CATEGORIES } from "@shared/public-audit";
+import {
+  PUBLIC_AUDIT_CATEGORIES,
+  PUBLIC_AUDIT_PLAN_CATALOG,
+} from "@shared/public-audit";
 import {
   normalizePublicAuditUrl,
   PublicAuditTargetError,
@@ -16,7 +20,7 @@ import {
 import {
   createPublicAuditReport,
   getPublicAuditFailureMessage,
-  PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
+  selectPublicAuditRecommendation,
   scorePublicAuditCategory,
   scorePublicAuditOverall,
 } from "./public-audit-report";
@@ -227,22 +231,27 @@ test("report uses page evidence, returns eight categories, and marks unavailable
     scoredCategories: 8,
     totalCategories: 8,
   });
-  assert.equal(report.recommendation.plan, "Standard");
-  assert.equal(report.recommendation.priceEur, 29);
-  assert.equal(
-    report.recommendation.href,
-    "https://app.flowpoint.pro/signin.html?plan=standard",
-  );
-  assert.equal(report.recommendation.href, PUBLIC_AUDIT_STANDARD_SIGNUP_URL);
+  assert.equal(report.recommendation.status, "compare");
+  assert.equal(report.recommendation.plan, null);
+  assert.equal(report.recommendation.priceEur, null);
+  assert.equal(report.recommendation.href, "/pricing");
   assert.deepEqual(
-    report.recommendation.planLinks.map(({ plan, href }) => [plan, href]),
+    report.recommendation.comparisonPlans.map(({ plan, priceEur, href }) => [
+      plan,
+      priceEur,
+      href,
+    ]),
     [
-      ["Standard", "https://app.flowpoint.pro/signin.html?plan=standard"],
-      ["Pro", "https://app.flowpoint.pro/signin.html?plan=pro"],
-      ["Ultra", "https://app.flowpoint.pro/signin.html?plan=ultra"],
+      ["Standard", 29, "/pricing#plan-standard"],
+      ["Pro", 79, "/pricing#plan-pro"],
+      ["Ultra", 149, "/pricing#plan-ultra"],
     ],
   );
-  assert.doesNotMatch(report.recommendation.reason, /\badd[ -]?ons?\b/i);
+  assert.ok(
+    report.recommendation.comparisonPlans.every(
+      ({ href }) => href.startsWith("/pricing") && !href.includes("signin"),
+    ),
+  );
 
   const check = (id: string) =>
     report.categories.flatMap((category) => category.checks).find((item) => item.id === id);
@@ -261,6 +270,88 @@ test("report uses page evidence, returns eight categories, and marks unavailable
   assert.ok(requests.some((request) => request.url.endsWith("/site.css")));
   assert.ok(requests.some((request) => request.url.endsWith("/images/hero.jpg") && request.method === "HEAD"));
   assert.ok(requests.every((request) => new URL(request.url).origin === "https://audit.example"));
+});
+
+test("plan recommendation selects each offer from issue count, severity, and breadth", () => {
+  const buildRecommendation = (
+    findings: Partial<Record<PublicAuditCategory["key"], PublicAuditSeverity[]>>,
+    scoredCategoryCount = 5,
+  ) => {
+    const categories: PublicAuditCategory[] = PUBLIC_AUDIT_CATEGORIES.map(
+      ({ key, title }, index) => ({
+        key,
+        title,
+        score: index < scoredCategoryCount ? 80 : null,
+        status: index < scoredCategoryCount ? "measured" : "not_measured",
+        coverage: { measuredChecks: 5, totalChecks: 7 },
+        summary: "",
+        checks: (findings[key] ?? []).map((severity, findingIndex) =>
+          makeCheck(`${key}-finding-${findingIndex}`, "failed", severity),
+        ),
+      }),
+    );
+    return selectPublicAuditRecommendation(categories, {
+      measuredChecks: 41,
+      totalChecks: 54,
+      scoredCategories: scoredCategoryCount,
+      totalCategories: 8,
+    });
+  };
+
+  const standard = buildRecommendation({ seo: ["low"] });
+  const pro = buildRecommendation({
+    seo: ["high", "medium"],
+    performance: ["medium"],
+  });
+  const ultra = buildRecommendation({
+    seo: ["high", "high"],
+    performance: ["high"],
+    security: ["medium", "medium"],
+    technical: ["medium", "medium", "medium"],
+  });
+
+  assert.equal(standard.plan, "Standard");
+  assert.equal(standard.priceEur, 29);
+  assert.equal(standard.features[0], "Automated SEO audits");
+  assert.deepEqual(
+    standard.comparisonPlans[0].monthlyLimits,
+    { audits: 30, monitors: 10, pdfReports: 30 },
+  );
+  assert.equal(pro.plan, "Pro");
+  assert.equal(pro.priceEur, 79);
+  assert.ok(pro.features.includes("Advanced competitor analysis"));
+  assert.deepEqual(
+    pro.comparisonPlans[1].monthlyLimits,
+    { audits: 300, monitors: 50, pdfReports: 300 },
+  );
+  assert.equal(ultra.plan, "Ultra");
+  assert.equal(ultra.priceEur, 149);
+  assert.ok(ultra.features.includes("365-day data retention"));
+  assert.deepEqual(
+    ultra.comparisonPlans[2].monthlyLimits,
+    { audits: 1_000, monitors: 300, pdfReports: 1_000 },
+  );
+  for (const recommendation of [standard, pro, ultra]) {
+    assert.equal(recommendation.status, "recommended");
+    assert.ok(recommendation.reasons.length >= 2 && recommendation.reasons.length <= 3);
+    assert.ok(recommendation.href.startsWith("/pricing#plan-"));
+    assert.ok(!recommendation.href.includes("signin"));
+  }
+
+  const insufficient = buildRecommendation(
+    { seo: ["high", "high", "medium", "medium"] },
+    2,
+  );
+  assert.equal(insufficient.status, "compare");
+  assert.equal(insufficient.plan, null);
+  assert.equal(insufficient.priceEur, null);
+  assert.equal(insufficient.href, "/pricing");
+  assert.equal(insufficient.comparisonPlans.length, 3);
+  assert.match(insufficient.reasons[0], /not enough evidence/i);
+  assert.deepEqual(
+    insufficient.comparisonPlans,
+    PUBLIC_AUDIT_PLAN_CATALOG,
+  );
 });
 
 test("controlled broken page scores lower and surfaces measured problems", async () => {

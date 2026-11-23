@@ -73,6 +73,9 @@ test("pricing trial FAQ and disclosures are server-rendered in English and Frenc
   assert.match(english, /href="https:\/\/app\.flowpoint\.pro\/signin\.html\?plan=standard"/);
   assert.match(english, /href="https:\/\/app\.flowpoint\.pro\/signin\.html\?plan=pro"/);
   assert.match(english, /href="https:\/\/app\.flowpoint\.pro\/signin\.html\?plan=ultra"/);
+  for (const plan of ["standard", "pro", "ultra"]) {
+    assert.match(english, new RegExp(`id="plan-${plan}"`));
+  }
 });
 
 test("homepage renders the connected-signals and security replacements without browser effects", () => {
