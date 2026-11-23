@@ -173,7 +173,14 @@ router.post("/integrations/make/connect", requireAddon("zapierIntegration", "Zap
 });
 
 // ── POST /api/integrations/connections ─────────────────────────────────────────
-router.post("/integrations/connections", async (req, res) => {
+// Les plateformes Zapier/Make exigent l'add-on, comme leurs routes dediees : sans cette garde,
+// `platform: "zapier"|"make"` sur la route generique contournait l'achat.
+const zapierMakeGate = requireAddon("zapierIntegration", "Zapier/Make Integration");
+router.post("/integrations/connections", (req, res, next) => {
+  const platform = String((req.body as { platform?: unknown } | undefined)?.platform ?? "").trim().toLowerCase();
+  if (platform === "zapier" || platform === "make") { zapierMakeGate(req, res, next); return; }
+  next();
+}, async (req, res) => {
   const { name, platform, endpointUrl, events = [], headers = {}, retryEnabled = true, maxRetries = 3 } = req.body as {
     name?: string; platform?: string; endpointUrl?: string;
     events?: string[]; headers?: Record<string, string>;

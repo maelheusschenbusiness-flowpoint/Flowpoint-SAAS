@@ -139,6 +139,8 @@ let fake: ReturnType<typeof makeFakeStripe>;
 beforeEach(() => {
   process.env["NODE_ENV"] = "test";
   process.env["STRIPE_SECRET_KEY"] ||= "sk_live_dummy_for_tests";
+  // CI force STRIPE_TEST_MODE=true : en mode test seule une cle sk_test_ est utilisable (jamais LIVE).
+  process.env["STRIPE_TEST_KEY"] ||= "sk_test_dummy_for_tests";
   for (const k of Object.keys(PENDING)) delete PENDING[k];
   PENDING[TOKEN_S1] = { email: NEW_EMAIL, stripe_customer_id: null };
   PENDING[TOKEN_S2] = { email: "other.signup@exemple.fr", stripe_customer_id: null };

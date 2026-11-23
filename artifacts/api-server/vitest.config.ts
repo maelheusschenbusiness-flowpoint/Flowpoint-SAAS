@@ -71,6 +71,7 @@ export default defineConfig({
       "src/lib/plans.test.ts",
       // Lot 1 add-ons : garde prix LIVE (add-on invisible et non achetable sans variable de prix)
       "src/lib/addon-price-gate.test.ts",
+      "src/lib/addon-test-price-overrides.test.ts",
       // gsc_keyword_data creee hors du bloc v3 (absente de la production)
       "src/services/gsc-keyword-data-schema-db.test.ts",
       // gsc_page_data creee hors du bloc v3 (absente de la production)
@@ -214,6 +215,9 @@ export default defineConfig({
       // Checkout abandonné — gardes contre les mutations prématurées
       "src/tests/checkout-abandon-guards.test.ts",
       "src/tests/public-pages-fpsource.test.ts",
+      "src/services/stripe-factory-securite.test.ts",
+      "src/lib/addon-masquage-temporaire.test.ts",
+      "src/routes/integrations-connections-guard.test.ts",
       "src/tests/auth-login-verify-stripe-mode.test.ts",
       // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
       "src/tests/stripe-webhook-pending-activation.test.ts",

@@ -1,3 +1,4 @@
+import { getStripeKey as getResolvedStripeKey } from "./stripe-factory.js";
 import { pool } from "@workspace/db";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
@@ -208,7 +209,7 @@ export async function getUsageSummary(orgId = "default") {
 
   // Bug-5 fix: resolve nextBillingDate from Stripe when subscription exists
   let nextBillingDate: string | null = null;
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getResolvedStripeKey();
   if (stripeKey && billingCtx.stripeSubscriptionId) {
     try {
       const { default: Stripe } = await import("stripe");
@@ -493,7 +494,7 @@ export async function getSubscriptionAnalytics(orgId = "default") {
 
 // ── Trial management ──────────────────────────────────────────────────────────
 export async function startTrial(plan: string = "pro", days: number = 14, orgId = "default") {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getResolvedStripeKey();
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
       throw new Error("STRIPE_LIVE_API_KEY is required in production — cannot activate trial");
@@ -560,7 +561,7 @@ export async function validateCoupon(code: string): Promise<{
   duration?: string;
   mock?: boolean;
 }> {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getResolvedStripeKey();
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
       return { valid: false, error: "Payment service not configured" };
@@ -607,7 +608,7 @@ export async function getInvoices(limit: number = 20, stripeCustomerId?: string)
   mock?: boolean;
   error?: string;
 }> {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = getResolvedStripeKey();
   const customerId = stripeCustomerId ?? null;
   if (!stripeKey || !customerId) {
     return { invoices: [], mock: !stripeKey };
