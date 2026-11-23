@@ -357,6 +357,10 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "gbpSlots10",
   // reviewIntelligence: Pro/Ultra ont deja la fonction par leur plan ; l'achat ne debloque rien de plus.
   "reviewIntelligence",
+  // localDominationMaps / zapierIntegration: hors commercialisation jusqu'a certification complete (Stripe TEST + fonctionnel).
+  // Les droits et abonnements existants restent reconnus ; retirer de ce set a la validation du proprietaire.
+  "localDominationMaps",
+  "zapierIntegration",
   // ── No requireAddon gate in any route ─────────────────────────────────────
   // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
   // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
