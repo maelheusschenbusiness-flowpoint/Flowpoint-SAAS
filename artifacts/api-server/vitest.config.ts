@@ -195,6 +195,8 @@ export default defineConfig({
       "src/services/stripe-factory-securite.test.ts",
       "src/lib/addon-masquage-temporaire.test.ts",
       "src/routes/integrations-connections-guard.test.ts",
+      // automation_integrations.provider NOT NULL sans defaut : INSERT explicite + DEFAULT additif
+      "src/services/integrations-provider-db.test.ts",
       "src/tests/auth-login-verify-stripe-mode.test.ts",
       // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
       "src/tests/stripe-webhook-pending-activation.test.ts",
