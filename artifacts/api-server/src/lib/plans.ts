@@ -357,6 +357,10 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "gbpSlots10",
   // reviewIntelligence: Pro/Ultra ont deja la fonction par leur plan ; l'achat ne debloque rien de plus.
   "reviewIntelligence",
+  // localDominationMaps / zapierIntegration: hors commercialisation jusqu'a certification complete (Stripe TEST + fonctionnel).
+  // Les droits et abonnements existants restent reconnus ; retirer de ce set a la validation du proprietaire.
+  "localDominationMaps",
+  "zapierIntegration",
   // ── No requireAddon gate in any route ─────────────────────────────────────
   // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
   // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
@@ -440,7 +444,6 @@ export const BETA_ADDONS = new Set<string>([
   "marketIntelligence",
   // Dépendance OAuth externe
   "aiGbpPosting",
-  "zapierIntegration",
   // Route /seo/backlinks réelle + requireAddon gate. DFS backlink integration
   // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
   "backlinkIntelligence",
@@ -582,11 +585,11 @@ const _STANDARD_PURCHASABLE = new Set<string>([
 const _PRO_EXCLUSIVE = new Set<string>([
   // NOTE: COMING_SOON_ADDONS must never appear here — they are not purchasable.
   // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
-  //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
+  //          crmIntegration, aiExecutiveReport, aiWorkflows, localDominationMaps,
+  //          zapierIntegration (all COMING_SOON)
   "keywordDomination",
-  "aiGbpPosting", "localDominationMaps",
+  "aiGbpPosting",
   "aiCro", "behavioralAI", "revenueLeak",
-  "zapierIntegration",
   "aiForecasting", "marketIntelligence",
   "enterprisePermissions",
 ]);

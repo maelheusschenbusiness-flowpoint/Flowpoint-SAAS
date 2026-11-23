@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ADDON_DEFINITIONS, FLAG_ADDONS, QTY_ADDONS, getAddonAvailability, isPlanAllowedAddon } from "./plans.js";
 
 describe("retrait temporaire de la vente : gbpSlots10 et reviewIntelligence", () => {
-  for (const key of ["gbpSlots10", "reviewIntelligence"]) {
+  for (const key of ["gbpSlots10", "reviewIntelligence", "localDominationMaps", "zapierIntegration"]) {
     it(`${key} : non vendable, reconnu pour les droits existants`, () => {
       expect(getAddonAvailability(key)).toBe("coming_soon");
       for (const plan of ["standard", "pro", "ultra"]) expect(isPlanAllowedAddon(plan, key)).toBe(false);
