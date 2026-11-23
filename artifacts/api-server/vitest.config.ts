@@ -157,6 +157,12 @@ export default defineConfig({
       // ranking-history result counts / usage contract
       "src/routes/local-seo-entitlement.test.ts",
        "src/routes/local-seo-rankings-route.test.ts",
+      // Local Domination Maps — heatmap scan (grid, scan claim/quota/unavailable, summary, GBP recommendations, routes)
+      "src/services/local-heatmap-grid.test.ts",
+      "src/services/local-maps-scan.test.ts",
+      "src/services/local-maps-summary.test.ts",
+      "src/services/local-maps-recommendations.test.ts",
+      "src/routes/local-maps-heatmap-route.test.ts",
       // Task #628 — Agency Lab / client-mode backend reliability: SQL/schema
       // failures surface (no silent empty arrays), genuine empty states preserved.
       "src/services/client-mode-service.test.ts",
