@@ -68,6 +68,58 @@ export type PublicAuditQuota = {
   resetAt: string;
 };
 
+export type PublicAuditPlan = "Standard" | "Pro" | "Ultra";
+
+export type PublicAuditPlanOption = {
+  plan: PublicAuditPlan;
+  priceEur: number;
+  href: string;
+  monthlyLimits: {
+    audits: number;
+    monitors: number;
+    pdfReports: number;
+  };
+  features: string[];
+};
+
+export const PUBLIC_AUDIT_PLAN_CATALOG: PublicAuditPlanOption[] = [
+  {
+    plan: "Standard",
+    priceEur: 29,
+    href: "/pricing#plan-standard",
+    monthlyLimits: { audits: 30, monitors: 10, pdfReports: 30 },
+    features: [
+      "Automated SEO audits",
+      "Uptime monitoring",
+      "Monthly PDF reports",
+    ],
+  },
+  {
+    plan: "Pro",
+    priceEur: 79,
+    href: "/pricing#plan-pro",
+    monthlyLimits: { audits: 300, monitors: 50, pdfReports: 300 },
+    features: [
+      "Monitoring checks every 5 minutes",
+      "Advanced competitor analysis",
+      "Weekly and scheduled reports",
+      "90-day history",
+    ],
+  },
+  {
+    plan: "Ultra",
+    priceEur: 149,
+    href: "/pricing#plan-ultra",
+    monthlyLimits: { audits: 1_000, monitors: 300, pdfReports: 1_000 },
+    features: [
+      "Full white-label reporting",
+      "Multiple workspaces and sites",
+      "Advanced competitor benchmarking",
+      "365-day data retention",
+    ],
+  },
+];
+
 export type PublicAuditReport = {
   url: string;
   finalUrl: string;
@@ -82,14 +134,13 @@ export type PublicAuditReport = {
   categories: PublicAuditCategory[];
   actionPlan: PublicAuditAction[];
   recommendation: {
-    plan: "Standard";
-    priceEur: number;
-    reason: string;
+    status: "recommended" | "compare";
+    plan: PublicAuditPlan | null;
+    priceEur: number | null;
+    reasons: string[];
+    features: string[];
     href: string;
-    planLinks: Array<{
-      plan: "Standard" | "Pro" | "Ultra";
-      href: string;
-    }>;
+    comparisonPlans: PublicAuditPlanOption[];
   };
   quota: PublicAuditQuota;
 };

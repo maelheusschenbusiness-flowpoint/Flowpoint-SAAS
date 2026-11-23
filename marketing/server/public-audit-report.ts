@@ -10,6 +10,8 @@ import {
   type PublicAuditSeverity,
   type PublicAuditStatus,
   type PublicAuditQuota,
+  type PublicAuditPlan,
+  PUBLIC_AUDIT_PLAN_CATALOG,
 } from "@shared/public-audit";
 import {
   PublicAuditTargetError,
@@ -24,13 +26,6 @@ const MAX_INTERNAL_LINKS = 3;
 const MAX_AUXILIARY_CONCURRENCY = 2;
 const MAX_HTML_BYTES = 512 * 1024;
 const MAX_CSS_BYTES = 64 * 1024;
-export const PUBLIC_AUDIT_STANDARD_SIGNUP_URL =
-  "https://app.flowpoint.pro/signin.html?plan=standard";
-export const PUBLIC_AUDIT_PLAN_URLS = {
-  Standard: PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
-  Pro: "https://app.flowpoint.pro/signin.html?plan=pro",
-  Ultra: "https://app.flowpoint.pro/signin.html?plan=ultra",
-} as const;
 
 const MIN_CATEGORY_SCORED_CHECKS = 3;
 const MIN_CATEGORY_COVERAGE = 0.5;
@@ -302,6 +297,119 @@ async function runLimited<T, R>(
   );
   await Promise.all(workers);
   return results;
+}
+
+export function selectPublicAuditRecommendation(
+  categories: PublicAuditCategory[],
+  coverage: PublicAuditReport["coverage"],
+): PublicAuditReport["recommendation"] {
+  const severityWeight: Record<PublicAuditSeverity, number> = {
+    critical: 4,
+    high: 3,
+    medium: 2,
+    low: 1,
+    info: 0,
+  };
+  const comparisonPlans = PUBLIC_AUDIT_PLAN_CATALOG;
+  const issues = categories.flatMap((category) =>
+    category.checks
+      .filter(
+        (check) =>
+          ["failed", "warning"].includes(check.status) &&
+          check.severity !== "info",
+      )
+      .map((check) => ({ category, check })),
+  );
+  const scoredCategories = categories.filter(
+    (category) => category.score !== null && category.status !== "not_measured",
+  ).length;
+
+  if (
+    coverage.measuredChecks < 12 ||
+    scoredCategories < 3 ||
+    issues.length === 0
+  ) {
+    const reason =
+      issues.length === 0
+        ? "No failed or warning checks were found, so this audit does not point to a specific subscription."
+        : `The audit measured ${coverage.measuredChecks} checks across ${scoredCategories} scored areas. There is not enough evidence to match a subscription to these results.`;
+    return {
+      status: "compare",
+      plan: null,
+      priceEur: null,
+      reasons: [reason],
+      features: [],
+      href: "/pricing",
+      comparisonPlans,
+    };
+  }
+
+  const severeIssues = issues.filter(
+    ({ check }) => check.severity === "critical" || check.severity === "high",
+  ).sort(
+    (left, right) =>
+      severityWeight[right.check.severity] -
+      severityWeight[left.check.severity],
+  );
+  const weightedIssueCount = issues.reduce(
+    (sum, { check }) => sum + severityWeight[check.severity],
+    0,
+  );
+  const affectedCategories = Array.from(
+    issues.reduce((counts, { category }) => {
+      counts.set(category.key, {
+        title: category.title,
+        count: (counts.get(category.key)?.count ?? 0) + 1,
+      });
+      return counts;
+    }, new Map<string, { title: string; count: number }>()),
+    ([, value]) => value,
+  ).sort((left, right) => right.count - left.count);
+
+  let recommendedPlan: PublicAuditPlan;
+  if (
+    issues.length >= 8 &&
+    affectedCategories.length >= 4 &&
+    severeIssues.length >= 3 &&
+    weightedIssueCount >= 18
+  ) {
+    recommendedPlan = "Ultra";
+  } else if (
+    issues.length >= 4 ||
+    weightedIssueCount >= 7 ||
+    (severeIssues.length > 0 && affectedCategories.length >= 2)
+  ) {
+    recommendedPlan = "Pro";
+  } else {
+    recommendedPlan = "Standard";
+  }
+
+  const selectedPlan = comparisonPlans.find(
+    (option) => option.plan === recommendedPlan,
+  )!;
+  const affectedAreaSummary = affectedCategories
+    .slice(0, 2)
+    .map(({ title, count }) => `${title} (${count})`)
+    .join(" and ");
+  const reasons = [
+    `The audit found ${issues.length} failed or warning checks; ${severeIssues.length} are high or critical.`,
+  ];
+  if (severeIssues[0]) {
+    reasons.push(
+      `The most serious finding is “${severeIssues[0].check.title}” (${severeIssues[0].check.severity} severity).`,
+    );
+  }
+  reasons.push(`The main areas with findings are ${affectedAreaSummary}.`);
+
+  return {
+    status: "recommended",
+    plan: selectedPlan.plan,
+    priceEur: selectedPlan.priceEur,
+    reasons: reasons.slice(0, 3),
+    features: selectedPlan.features,
+    href: selectedPlan.href,
+    comparisonPlans,
+  };
 }
 
 function sameOriginUrl(raw: string, base: URL): string | null {
@@ -1629,31 +1737,23 @@ export async function createPublicAuditReport(
       difficulty: check.difficulty,
       reason: check.recommendation,
     }));
+  const coverage = {
+    measuredChecks,
+    totalChecks: allChecks.length,
+    scoredCategories: scoredCategories.length,
+    totalCategories: categories.length,
+  };
+  const recommendation = selectPublicAuditRecommendation(categories, coverage);
 
   return {
     url: page.requestedUrl,
     finalUrl: base,
     checkedAt: new Date().toISOString(),
     overallScore: scorePublicAuditOverall(categories),
-    coverage: {
-      measuredChecks,
-      totalChecks: allChecks.length,
-      scoredCategories: scoredCategories.length,
-      totalCategories: categories.length,
-    },
+    coverage,
     categories,
     actionPlan,
-    recommendation: {
-      plan: "Standard",
-      priceEur: 29,
-      reason:
-        "This report checks one public page and cannot determine which subscription fits your team. Compare Standard, Pro, and Ultra based on the features and scale you need.",
-      href: PUBLIC_AUDIT_STANDARD_SIGNUP_URL,
-      planLinks: Object.entries(PUBLIC_AUDIT_PLAN_URLS).map(([plan, href]) => ({
-        plan: plan as keyof typeof PUBLIC_AUDIT_PLAN_URLS,
-        href,
-      })),
-    },
+    recommendation,
     quota,
   };
 }

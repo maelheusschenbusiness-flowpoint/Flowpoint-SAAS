@@ -14,6 +14,9 @@ const widgetSource = readFileSync(
   "client/src/components/home/flowpoint-landing/PublicAuditWidget.tsx",
   "utf8",
 );
+const pricingSource = readFileSync("client/src/pages/Pricing.tsx", "utf8");
+const planSource = readFileSync("shared/public-audit.ts", "utf8");
+const recommendationSource = readFileSync("server/public-audit-report.ts", "utf8");
 
 test("audit form and report switch to a single-column layout on narrow screens", () => {
   const mobileRules = styles.match(
@@ -24,6 +27,7 @@ test("audit form and report switch to a single-column layout on narrow screens",
   assert.match(mobileRules, /\.fp-audit__input-row button\s*\{\s*width:\s*100%;/);
   assert.match(mobileRules, /\.fp-audit__category-list\s*\{\s*grid-template-columns:\s*1fr;/);
   assert.match(mobileRules, /\.fp-audit__recommendation\s*\{[^}]*flex-direction:\s*column;/);
+  assert.match(mobileRules, /\.fp-audit__plan-comparison\s*\{\s*grid-template-columns:\s*1fr;/);
   assert.match(mobileRules, /\.fp-audit__plan-links\s*\{\s*display:\s*grid;/);
 });
 
@@ -38,8 +42,16 @@ test("audit results show evidence coverage, problem severity, and all plan CTAs"
   assert.match(widgetSource, /action\.evidence/);
   assert.match(widgetSource, /action\.impact/);
   assert.match(widgetSource, /action\.reason/);
-  assert.match(widgetSource, /report\.recommendation\.planLinks\.map/);
-  assert.match(widgetSource, /Explore \{plan\}/);
+  assert.match(widgetSource, /report\.recommendation\.comparisonPlans\.map/);
+  assert.match(widgetSource, /View recommended plan/);
+  assert.match(widgetSource, /href=\{report\.recommendation\.href\}/);
+  assert.match(widgetSource, /translate="yes"/);
+  assert.doesNotMatch(widgetSource, /signin\.html\?plan=/);
+  assert.match(pricingSource, /id=\{`plan-\$\{plan\.name\.toLowerCase\(\)\}`\}/);
+  assert.match(planSource, /href: "\/pricing#plan-standard"/);
+  assert.match(planSource, /href: "\/pricing#plan-pro"/);
+  assert.match(planSource, /href: "\/pricing#plan-ultra"/);
+  assert.match(recommendationSource, /href: "\/pricing"/);
 });
 
 test("homepage hero glow stays within the viewport", () => {

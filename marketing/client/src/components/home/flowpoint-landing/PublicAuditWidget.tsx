@@ -95,6 +95,12 @@ export default function PublicAuditWidget({
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState("");
   const exhausted = quotaRemaining !== null && quotaRemaining <= 0;
+  const recommendedPlanDetails =
+    report?.recommendation.status === "recommended"
+      ? report.recommendation.comparisonPlans.find(
+          (option) => option.plan === report.recommendation.plan,
+        )
+      : undefined;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -309,25 +315,82 @@ export default function PublicAuditWidget({
               </section>
             )}
 
-            <aside className="fp-audit__recommendation">
+            <aside className="fp-audit__recommendation" translate="yes">
               <div className="fp-audit__recommendation-copy">
-                <span className="fp-audit__eyebrow">A WAY TO KEEP GOING</span>
-                <h4>Compare FlowPoint plans</h4>
-                <p>{report.recommendation.reason}</p>
-                <small>Standard starts at {formatPrice(report.recommendation.priceEur)} / month.</small>
+                <span className="fp-audit__eyebrow">
+                  {report.recommendation.status === "recommended"
+                    ? "PLAN MATCH"
+                    : "PLAN COMPARISON"}
+                </span>
+                <h4>
+                  {report.recommendation.status === "recommended" &&
+                  report.recommendation.plan
+                    ? `Recommended for your website: ${report.recommendation.plan}`
+                    : "Compare FlowPoint plans"}
+                </h4>
+                {report.recommendation.status === "recommended" &&
+                report.recommendation.priceEur !== null ? (
+                  <>
+                    <p className="fp-audit__recommendation-price">
+                      {formatPrice(report.recommendation.priceEur)} / month
+                    </p>
+                    {recommendedPlanDetails && (
+                      <small className="fp-audit__recommendation-limits">
+                        {recommendedPlanDetails.monthlyLimits.audits} audits ·{" "}
+                        {recommendedPlanDetails.monthlyLimits.monitors} monitors ·{" "}
+                        {recommendedPlanDetails.monthlyLimits.pdfReports} PDF reports / month
+                      </small>
+                    )}
+                    <ul className="fp-audit__recommendation-reasons">
+                      {report.recommendation.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                    <div className="fp-audit__recommendation-features">
+                      <strong>Relevant FlowPoint features</strong>
+                      <ul>
+                        {report.recommendation.features.map((feature) => (
+                          <li key={feature}>{feature}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p>{report.recommendation.reasons[0]}</p>
+                    <div className="fp-audit__plan-comparison">
+                      {report.recommendation.comparisonPlans.map((option) => (
+                        <div key={option.plan}>
+                          <strong>{option.plan}</strong>
+                          <span>{formatPrice(option.priceEur)} / month</span>
+                          <small>
+                            {option.monthlyLimits.audits} audits ·{" "}
+                            {option.monthlyLimits.monitors} monitors ·{" "}
+                            {option.monthlyLimits.pdfReports} PDF reports / month
+                          </small>
+                          <ul>
+                            {option.features.map((feature) => (
+                              <li key={feature}>{feature}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
               <div className="fp-audit__plan-links">
-                {report.recommendation.planLinks.map(({ plan, href }) => (
-                  <a
-                    href={href}
-                    key={plan}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={onRecommendationClick}
-                  >
-                    Explore {plan} <ExternalLink size={15} aria-hidden="true" />
-                  </a>
-                ))}
+                <a
+                  href={report.recommendation.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onRecommendationClick}
+                >
+                  {report.recommendation.status === "recommended"
+                    ? "View recommended plan"
+                    : "Compare plans"}
+                  <ExternalLink size={15} aria-hidden="true" />
+                </a>
               </div>
             </aside>
             <p className="fp-audit__report-foot"><ShieldCheck size={14} /> This report reflects the checks available at the time shown. PageSpeed Insights was not queried; Core Web Vitals are marked Not measured.</p>
