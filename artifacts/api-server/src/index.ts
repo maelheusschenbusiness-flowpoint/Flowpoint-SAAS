@@ -12,6 +12,8 @@ import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
+import { initBehavioralCroTables } from "./services/init-behavioral-cro-tables.js";
+import { loadBehavioralCorsAllowlist } from "./routes/behavioral.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
@@ -325,6 +327,14 @@ async function main() {
         logger.warn({ err }, "[startup] init-data-tables step failed (non-fatal)");
       });
 
+    // Behavioral AI / AI CRO / Revenue Leak : tables absentes de la production, puis
+    // allowlist CORS des sites enregistres (sinon vide apres chaque redemarrage).
+    await runCriticalStartupStep("init-behavioral-cro-tables", initBehavioralCroTables)
+      .then(() => loadBehavioralCorsAllowlist())
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] behavioral tables / CORS allowlist step failed (non-fatal)");
+      });
+
     // P0-5 : initAiMigration was previously only run on the full path.
     // Add it here so ai_recommendations / ai_workspace_profiles etc. are always present.
     await runCriticalStartupStep("AI migration", initAiMigration)
@@ -361,6 +371,11 @@ async function main() {
     // init-data-tables MUST run first: creates organizations, users, org_settings
     // and all core tables that init-missions/automation/monitors depend on.
     await runCriticalStartupStep("init-data-tables", initDataTables);
+    await runCriticalStartupStep("init-behavioral-cro-tables", initBehavioralCroTables)
+      .then(() => loadBehavioralCorsAllowlist())
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] behavioral tables / CORS allowlist step failed (non-fatal)");
+      });
     await runCriticalStartupStep("init-missions",   initMissionsTables);
     await runCriticalStartupStep("init-automation", initAutomationTables);
     await runCriticalStartupStep("init-monitors",   initMonitorsTables);

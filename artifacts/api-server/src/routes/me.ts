@@ -911,7 +911,8 @@ router.delete("/settings/data", ownerOnly, async (req: Request, res: Response): 
     // Analytics & SEO tools
     "psi_cache", "seo_forecasts", "funnels", "funnel_steps",
     "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
-    "behavior_events", "behavior_sessions",
+    "behavior_events", "behavior_sessions", "behavior_insights", "behavior_site_tokens",
+    "cro_recommendations", "revenue_leak_resolutions",
     "traffic_sources", "traffic_losses",
     "cro_scores", "cro_experiments", "revenue_leaks",
     // Competitors & Local SEO

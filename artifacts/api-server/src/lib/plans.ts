@@ -159,6 +159,9 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
     backlinkIntelligence: process.env["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"]    ?? "",
     behavioralAI:         process.env["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"]     ?? "",
+    // Surcharges TEST (mêmes noms de variables que la beta) : sans elles le mode TEST retombe sur l'id LIVE.
+    aiCro:                process.env["STRIPE_TEST_PRICE_ID_ADDON_AI_CRO"]      ?? "",
+    revenueLeak:          process.env["STRIPE_TEST_PRICE_ID_ADDON_REVENUE_LEAK"] ?? "",
     aiForecasting:        process.env["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"]    ?? "",
     enterprisePermissions:process.env["STRIPE_TEST_PRICE_ID_ADDON_ENT"]         ?? "",
     advancedWebhooks:     process.env["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"]    ?? "",
