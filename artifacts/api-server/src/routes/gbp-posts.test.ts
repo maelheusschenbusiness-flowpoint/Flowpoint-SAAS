@@ -32,6 +32,24 @@ app.use(router);
 describe("GBP post studio API", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("queue and media routes are explicitly unavailable (nothing writes to those tables) and never fake an empty working list", async () => {
+    for (const [path, code] of [["/gbp-posts/queue", "GBP_QUEUE_NOT_AVAILABLE"], ["/gbp-posts/media", "GBP_MEDIA_NOT_AVAILABLE"]] as const) {
+      const res = await request(app).get(path);
+      expect(res.status).toBe(501);
+      expect(res.body).toMatchObject({ ok: false, available: false, code });
+      expect(res.body).not.toHaveProperty("queue");
+      expect(res.body).not.toHaveProperty("media");
+    }
+  });
+
+  it("still accepts HTTPS image URLs and rejects non-HTTPS ones", async () => {
+    (createPost as any).mockResolvedValue({ id: "p1" });
+    const ok = await request(app).post("/gbp-posts").send({ content: "Hello", mediaUrls: ["https://example.com/a.jpg"] });
+    expect(ok.status).toBeLessThan(400);
+    const bad = await request(app).post("/gbp-posts").send({ content: "Hello", mediaUrls: ["http://example.com/a.jpg"] });
+    expect(bad.status).toBe(400);
+  });
+
   it("blocks viewers from GBP writes and members from deleting posts", async () => {
     const viewerWrites = await Promise.all([
       request(app).post("/gbp-posts").set("x-test-role", "viewer").send({ content: "Draft" }),
