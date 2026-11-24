@@ -31,6 +31,11 @@ app.get("/healthz", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
+app.get("/favicon.ico", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.redirect(302, "/favicon.png?v=3");
+});
+
 app.use(
   express.json(),
 );

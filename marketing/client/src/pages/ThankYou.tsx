@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
+import { ThemePicker } from "@/components/ThemePicker";
 
 export default function ThankYou() {
   usePageTitle("Thank you | FlowPoint", { noindex: true });
@@ -41,6 +42,7 @@ export default function ThankYou() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 px-4">
+      <ThemePicker className="fixed right-4 top-4 z-50 h-10 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

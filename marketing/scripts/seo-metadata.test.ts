@@ -4,6 +4,7 @@ import test from "node:test";
 import ts from "typescript";
 import { injectMetadata, ROUTE_METADATA } from "../server/seo-metadata";
 import { isPublicPath } from "../server/routes/public-paths";
+import { PUBLIC_PATHS } from "../server/routes/public-paths";
 import {
   getProductionResourceArticles,
   getResourceArticleCanonical,
@@ -180,8 +181,8 @@ test("pricing FAQ schema has exact English and French trial disclosures", () => 
   assert.ok(pricing.includes("plan.name.toLowerCase()"));
   assert.ok(pricing.includes("<TrialDisclosure showPricingLink={false} className=\"mt-2\" />"));
   assert.doesNotMatch(pricing, /After your 14-day trial, choose the plan that fits your needs/);
-  assert.match(injectMetadata(template, "/pricing", "fr"), /<html lang="fr">/);
-  assert.match(injectMetadata(template, "/pricing", "en"), /<html lang="en">/);
+  assert.match(injectMetadata(template, "/pricing", "fr"), /<html lang="fr" data-theme="system">/);
+  assert.match(injectMetadata(template, "/pricing", "en"), /<html lang="en" data-theme="system">/);
 });
 
 test("resource schemas use the English canonical URL and breadcrumb labels", () => {
@@ -212,6 +213,28 @@ test("every production article schema language agrees with the English document 
     const schema = jsonLd(injectMetadata(template, path)).find(item => item["@type"] === "Article");
     assert.ok(schema, path);
     assert.equal(schema.inLanguage, language, path);
+  }
+});
+
+test("every public marketing route defaults to English and supports SSR theme preferences", () => {
+  const articlePaths = getProductionResourceArticles().flatMap((article) => {
+    const canonicalPath = new URL(getResourceArticleCanonical(article.slug)).pathname;
+    return [canonicalPath, `/ressources/${article.slug}`];
+  });
+  const paths = [...new Set([...PUBLIC_PATHS, ...articlePaths])];
+
+  for (const path of paths) {
+    const defaultHtml = injectMetadata(template, path);
+    const darkHtml = injectMetadata(template, path, "fr", "dark");
+    assert.match(defaultHtml, /<html lang="en" data-theme="system">/, `${path} default`);
+    const selectedLanguage =
+      path === "/pricing" || path === "/tarifs" ? "fr" : "en";
+    assert.match(
+      darkHtml,
+      new RegExp(`<html lang="${selectedLanguage}" data-theme="dark">`),
+      `${path} keeps the expected SSR language`,
+    );
+    assert.match(defaultHtml, /<meta name="description"/, `${path} has a description`);
   }
 });
 

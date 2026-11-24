@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { ThemePicker } from "@/components/ThemePicker";
 import { trackEvent, trackSignupCta } from "@/lib/analytics";
 import { useTheme } from "@/components/ThemeProvider";
 import PublicAuditWidget from "./PublicAuditWidget";
@@ -227,6 +228,7 @@ function LandingV2() {
           </a>
           <div className="fp2-header-tools">
             <span className="fp2-mobile-language"><LanguagePicker /></span>
+            <span className="fp2-mobile-theme"><ThemePicker className="fp2-theme-picker" /></span>
             <button className="fp2-menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} type="button">
               {menuOpen ? <X /> : <Menu />}
             </button>
@@ -236,6 +238,7 @@ function LandingV2() {
             <a href="/features" target="_top" onClick={() => setMenuOpen(false)}>Features</a>
             <a href="/pricing" target="_top" onClick={() => setMenuOpen(false)}>Pricing</a>
             <span className="fp2-desktop-language"><LanguagePicker /></span>
+            <span className="fp2-desktop-theme"><ThemePicker className="fp2-theme-picker" /></span>
             <div className="fp2-nav-cta-group">
               <a className="fp2-nav-cta" href={signupUrl} target="_blank" rel="noreferrer" onClick={() => trackSignupCta("navigation_desktop")}>
                 Start my 14-day trial <ArrowUpRight size={15} />

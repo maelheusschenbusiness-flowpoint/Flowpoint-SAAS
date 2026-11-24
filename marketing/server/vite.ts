@@ -10,6 +10,7 @@ import { injectMetadata } from "./seo-metadata";
 import { getPublishedResourceArticles } from "@shared/resource-articles";
 import { appendResourceArticlesToSitemap } from "@shared/resource-sitemap";
 import { resolveMarketingLanguage } from "@shared/marketing-language";
+import { resolveMarketingThemeMode } from "@shared/marketing-theme";
 
 const viteLogger = createLogger();
 
@@ -93,17 +94,19 @@ export async function setupVite(server: Server, app: Express) {
       const transformed = await vite.transformIndexHtml(url, template);
       const pathname = req.path;
       const isPricingPath = pathname === "/pricing" || pathname === "/tarifs";
+      const themeMode = resolveMarketingThemeMode(req.get("cookie"));
       const language = isPricingPath
         ? resolveMarketingLanguage(req.originalUrl, req.get("cookie"))
         : "en";
+      res.vary("Cookie");
       if (isPricingPath) {
-        res.vary("Cookie");
         res.set("Cache-Control", "private, no-store");
       }
       const page = injectMetadata(
         transformed,
         pathname,
         language,
+        themeMode,
       );
       const status = isPublicPath(pathname) ? 200 : 404;
 
@@ -111,8 +114,8 @@ export async function setupVite(server: Server, app: Express) {
       try {
         const { render } = (await vite.ssrLoadModule(
           "/src/entry-server.tsx",
-        )) as { render: (url: string, language?: string) => string };
-        const appHtml = render(pathname, language);
+        )) as { render: (url: string, language?: string, themeMode?: string) => string };
+        const appHtml = render(pathname, language, themeMode);
         finalPage = page.replace(
           '<div id="root"></div>',
           `<div id="root">${appHtml}</div>`,

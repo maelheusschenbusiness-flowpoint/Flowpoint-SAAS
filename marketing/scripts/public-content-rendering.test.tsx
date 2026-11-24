@@ -3,6 +3,12 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { getPricingFaqs } from "../shared/structured-data-content";
+import {
+  getProductionResourceArticles,
+  getResourceArticleCanonical,
+} from "../shared/resource-articles";
+import { PUBLIC_PATHS } from "../server/routes/public-paths";
+import { injectMetadata } from "../server/seo-metadata";
 
 // Test the production SSR bundle (including its CSS handling), not a Node-only
 // source import: the homepage imports stylesheets that tsx cannot load.
@@ -30,6 +36,14 @@ const publicRoutes = [
   "/mentions-legales",
   "/informations-legales",
 ];
+const allPublicRoutes = [...new Set([
+  ...PUBLIC_PATHS,
+  ...getProductionResourceArticles().flatMap((article) => {
+    const canonicalPath = new URL(getResourceArticleCanonical(article.slug)).pathname;
+    return [canonicalPath, `/ressources/${article.slug}`];
+  }),
+])];
+const clientTemplate = readFileSync("client/index.html", "utf8");
 
 for (const route of publicRoutes) {
   test(`${route}: server-rendered content is visible before hydration or scrolling`, () => {
@@ -53,6 +67,23 @@ for (const route of publicRoutes) {
     }
   });
 }
+
+test("every public route renders English SSR with the selected theme control", () => {
+  for (const route of allPublicRoutes) {
+    const html = render(route, "en", "dark");
+    assert.match(html, /<h1\b/, `${route} must render its primary heading`);
+    assert.match(html, /data-testid="theme-picker"/, `${route} must expose the theme selector`);
+    assert.match(
+      html,
+      /<option value="dark" selected/,
+      `${route} must render the selected dark theme`,
+    );
+
+    const document = injectMetadata(clientTemplate, route, "en", "dark");
+    assert.match(document, /<html lang="en" data-theme="dark">/, `${route} document language/theme`);
+    assert.match(document, /<meta name="description"/, `${route} SEO description`);
+  }
+});
 
 test("free SEO audit explains its single-page scope before hydration", () => {
   const html = render("/free-seo-audit");

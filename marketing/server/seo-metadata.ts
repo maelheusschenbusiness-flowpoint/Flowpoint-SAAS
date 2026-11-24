@@ -19,6 +19,7 @@ import {
 import { HOME_PAGE_TITLE } from "@shared/site-metadata";
 import { HOME_FAQS } from "@shared/home-faqs";
 import { normalizeMarketingLanguage } from "@shared/marketing-language";
+import { normalizeMarketingThemeMode } from "@shared/marketing-theme";
 
 export interface RouteMetadata {
   title: string;
@@ -195,7 +196,7 @@ function buildResourceArticleJsonLd(article: ResourceArticle): object {
       url: `${BASE_URL}/`,
       logo: {
         "@type": "ImageObject",
-        url: `${BASE_URL}/favicon.svg?v=2`,
+        url: `${BASE_URL}/favicon.svg?v=3`,
       },
     },
     datePublished: article.datePublished,
@@ -337,6 +338,7 @@ export function injectMetadata(
   html: string,
   pathname: string,
   displayedLanguage?: string,
+  displayedTheme?: string,
 ): string {
   const meta = getRouteMetadata(pathname);
 
@@ -344,16 +346,17 @@ export function injectMetadata(
   const headTags = buildHeadTags(meta);
 
   let result = html.replace(/<title>[^<]*<\/title>/, titleTag);
-  if (pathname === "/pricing" || pathname === "/tarifs") {
-    const language = normalizeMarketingLanguage(displayedLanguage) || "en";
-    result = result.replace(/<html\b([^>]*)>/i, (_tag, attributes: string) => {
-      const withoutLanguage = attributes.replace(
-        /\s+lang=(?:"[^"]*"|'[^']*')/i,
-        "",
-      );
-      return `<html${withoutLanguage} lang="${language}">`;
-    });
-  }
+  const isPricingPath = pathname === "/pricing" || pathname === "/tarifs";
+  const language = isPricingPath
+    ? normalizeMarketingLanguage(displayedLanguage) || "en"
+    : "en";
+  const themeMode = normalizeMarketingThemeMode(displayedTheme) || "system";
+  result = result.replace(/<html\b([^>]*)>/i, (_tag, attributes: string) => {
+    const withoutLanguageAndTheme = attributes
+      .replace(/\s+lang=(?:"[^"]*"|'[^']*')/i, "")
+      .replace(/\s+data-theme=(?:"[^"]*"|'[^']*')/i, "");
+    return `<html${withoutLanguageAndTheme} lang="${language}" data-theme="${themeMode}">`;
+  });
 
   const headCloseIdx = result.lastIndexOf("</head>");
   if (headCloseIdx === -1) return result;

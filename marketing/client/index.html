@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="system">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -7,9 +7,10 @@
       content="width=device-width, initial-scale=1.0"
     />
     <title>FlowPoint | Digital Growth Workspace</title>
-    <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
-    <link rel="icon" href="/favicon.png?v=2" type="image/png" sizes="128x128" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" sizes="180x180" />
+    <link rel="icon" href="/favicon.png?v=3" type="image/png" sizes="128x128" />
+    <link rel="icon" href="/favicon.svg?v=3" type="image/svg+xml" />
+    <link rel="shortcut icon" href="/favicon.png?v=3" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" sizes="180x180" />
     <meta name="color-scheme" content="light dark">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
@@ -67,7 +68,7 @@
           "@id": "https://flowpoint.pro/#organization",
           "name": "FlowPoint",
           "url": "https://flowpoint.pro/",
-          "logo": "https://flowpoint.pro/favicon.svg?v=2",
+          "logo": "https://flowpoint.pro/favicon.svg?v=3",
           "email": "support@flowpoint.pro",
           "vatID": "BE1038.273.845",
           "description": "FlowPoint is a SaaS workspace for SEO, local search, competitor analysis, website monitoring, analytics, reporting and AI-supported recommendations for teams.",
@@ -100,26 +101,66 @@
           var cookieLanguage = supportedLanguages.find(function(code) {
             return cookieMatch && code.toLowerCase() === cookieMatch[1].toLowerCase();
           });
+          var savedLanguage = null;
+          try {
+            var storedLanguage = window.localStorage.getItem("flowpoint-language");
+            savedLanguage = supportedLanguages.find(function(code) {
+              return storedLanguage && code.toLowerCase() === storedLanguage.toLowerCase();
+            });
+          } catch (e) {}
+          if (!requestedLanguage && !cookieLanguage && savedLanguage) {
+            document.cookie = "googtrans=/" + sourceLanguage + "/" + savedLanguage + "; path=/; max-age=31536000; SameSite=Lax";
+            document.cookie = "googtrans=/" + sourceLanguage + "/" + savedLanguage + "; path=/; domain=" + window.location.hostname + "; max-age=31536000; SameSite=Lax";
+            window.location.reload();
+            return;
+          }
           var language = requestedLanguage || cookieLanguage || "en";
           document.documentElement.lang = language;
           document.documentElement.dir = ["ar", "he"].includes(language.toLowerCase()) ? "rtl" : "ltr";
           document.documentElement.dataset.language = language;
-          document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; SameSite=Lax";
-          document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; domain=" + window.location.hostname + "; SameSite=Lax";
+          document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; max-age=31536000; SameSite=Lax";
+          document.cookie = "googtrans=/" + sourceLanguage + "/" + language + "; path=/; domain=" + window.location.hostname + "; max-age=31536000; SameSite=Lax";
         } catch (e) {}
       })();
     </script>
     <script>
       (function() {
         try {
-          if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            document.documentElement.classList.add('dark');
+          var root = document.documentElement;
+          var themeMode = root.dataset.theme || "system";
+          if (themeMode === "system") {
+            try {
+              var savedTheme = window.localStorage.getItem("flowpoint-theme");
+              if (savedTheme === "light" || savedTheme === "dark") {
+                themeMode = savedTheme;
+                root.dataset.theme = themeMode;
+                document.cookie = "flowpoint-theme=" + themeMode + "; path=/; max-age=31536000; SameSite=Lax";
+              }
+            } catch (e) {}
           }
+          var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var resolvedTheme = themeMode === "system" ? (systemDark ? "dark" : "light") : themeMode;
+          root.classList.toggle("dark", resolvedTheme === "dark");
+          root.style.colorScheme = resolvedTheme;
         } catch(e) {}
       })();
     </script>
     <div id="google_translate_element" style="display:none"></div>
     <div id="root"></div>
+    <script>
+      (function() {
+        try {
+          var root = document.documentElement;
+          var mode = root.dataset.theme || "system";
+          var resolved = mode === "system" ? (root.classList.contains("dark") ? "dark" : "light") : mode;
+          var landing = document.querySelector("#root .fp2-page");
+          if (landing) landing.dataset.theme = resolved;
+          document.querySelectorAll("select[data-theme-picker]").forEach(function(select) {
+            select.value = mode;
+          });
+        } catch(e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
     <script type="text/javascript">
       function googleTranslateElementInit() {

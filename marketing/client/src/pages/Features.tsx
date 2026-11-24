@@ -306,15 +306,17 @@ const GOOGLE_MAPS_OPTIMIZATION_COPY: Record<string, string> = {
 function getSelectedLanguage(): string {
   if (typeof document === "undefined") return "en";
   try {
+    const sourceLanguage = getMarketingTranslationSourceLanguage(window.location.pathname);
+    const translatedLanguage = document.cookie.match(
+      new RegExp(`(?:^|;\\s*)googtrans=/${sourceLanguage}/([^;]+)`, "i"),
+    )?.[1];
+    if (translatedLanguage) return translatedLanguage.toLowerCase();
     const savedLanguage = window.localStorage.getItem("flowpoint-language");
     if (savedLanguage) return savedLanguage.toLowerCase();
   } catch {
     // Read the translation cookie below when browser storage is unavailable.
   }
-  const sourceLanguage = getMarketingTranslationSourceLanguage(window.location.pathname);
-  return document.cookie.match(
-    new RegExp(`(?:^|;\\s*)googtrans=/${sourceLanguage}/([^;]+)`, "i"),
-  )?.[1]?.toLowerCase() || document.documentElement.lang.toLowerCase() || "en";
+  return document.documentElement.lang.toLowerCase() || "en";
 }
 
 const featureLandingLinks: Record<string, { href: string; label: string }> = {

@@ -35,7 +35,7 @@ export default function SeoGuide() {
       "url": "https://flowpoint.pro/",
       "logo": {
         "@type": "ImageObject",
-        "url": "https://flowpoint.pro/favicon.svg"
+        "url": "https://flowpoint.pro/favicon.svg?v=3"
       }
     },
     "datePublished": "2025-01-01",

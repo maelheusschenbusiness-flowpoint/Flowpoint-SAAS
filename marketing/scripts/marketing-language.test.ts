@@ -14,6 +14,11 @@ test("unsupported query and cookie languages fall back to English", () => {
   assert.equal(resolveMarketingLanguage("?lang=xx", "googtrans=/en/xx"), "en");
 });
 
+test("a new visitor defaults to English without using browser language", () => {
+  assert.equal(resolveMarketingLanguage("", undefined), "en");
+  assert.equal(resolveMarketingLanguage("", ""), "en");
+});
+
 test("unsupported query language falls through to a supported French cookie", () => {
   assert.equal(resolveMarketingLanguage("?lang=xx", "googtrans=/en/fr"), "fr");
 });
