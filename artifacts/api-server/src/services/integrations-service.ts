@@ -16,6 +16,14 @@ export function getIntegrationLimit(plan: string): number {
   return limits[plan.toLowerCase()] ?? 10;
 }
 
+// `automation_integrations.provider` est NOT NULL ; selon la base (production :
+// DEFAULT 'custom', base de test : aucun defaut) l'INSERT doit donc le fournir.
+// Valeur = plateforme normalisee, sinon 'custom' (semantique du defaut de production).
+export function resolveIntegrationProvider(platform?: string | null): string {
+  const p = String(platform ?? "").trim().toLowerCase();
+  return p || "custom";
+}
+
 // ── createIntegration ─────────────────────────────────────────────────────────
 // Creates an outgoing webhook integration in automation_integrations.
 // signature matches what routes/integrations.ts expects:
@@ -55,11 +63,11 @@ export async function createIntegration(
 
     await client.query(
       `INSERT INTO automation_integrations
-         (id, org_id, name, platform, endpoint_url, secret_key, events, headers,
+         (id, org_id, provider, name, platform, endpoint_url, secret_key, events, headers,
           timeout_ms, max_retries, retry_enabled, active, success_count, failure_count, metadata, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,0,0,$12,NOW(),NOW())`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,0,0,$13,NOW(),NOW())`,
       [
-        id, orgId, data.name, platform, endpointUrl, secretKey,
+        id, orgId, resolveIntegrationProvider(platform), data.name, platform, endpointUrl, secretKey,
         JSON.stringify(events),
         JSON.stringify(data.headers ?? {}),
         10000,

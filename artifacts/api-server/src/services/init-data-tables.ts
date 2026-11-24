@@ -2232,6 +2232,46 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS gsc_page_data_org_idx ON gsc_page_data(org_id)`);
     await applyTenantRls("gsc_page_data");
 
+    // ── Local Domination Maps : local_opportunities et local_visibility_scores ──
+    // Lues par GET /api/local-maps/opportunities et /visibility-scores
+    // (SELECT * ... WHERE org_id=$1 ORDER BY score DESC / created_at DESC) et listees dans
+    // init-rls-migration.ts, mais aucun CREATE TABLE n'existait : relation absente (HTTP 500).
+    // Additif et idempotent, hors du bloc v3 (jamais rejoue sur une base deja migree).
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS local_opportunities (
+        id               TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        org_id           TEXT        NOT NULL DEFAULT 'default',
+        location_id      TEXT,
+        keyword          TEXT,
+        title            TEXT        NOT NULL DEFAULT '',
+        description      TEXT,
+        opportunity_type TEXT        NOT NULL DEFAULT 'general',
+        score            INTEGER     NOT NULL DEFAULT 0,
+        status           TEXT        NOT NULL DEFAULT 'open',
+        data             JSONB       NOT NULL DEFAULT '{}',
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS local_opportunities_org_score_idx ON local_opportunities(org_id, score DESC)`);
+    await applyTenantRls("local_opportunities");
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS local_visibility_scores (
+        id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        org_id      TEXT        NOT NULL DEFAULT 'default',
+        location_id TEXT,
+        heatmap_id  TEXT,
+        keyword     TEXT,
+        score       INTEGER     NOT NULL DEFAULT 0,
+        avg_rank    REAL,
+        coverage    REAL,
+        details     JSONB       NOT NULL DEFAULT '{}',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS local_visibility_scores_org_idx ON local_visibility_scores(org_id, created_at DESC)`);
+    await applyTenantRls("local_visibility_scores");
+
     // ── Add-ons du lot 1 : tables additives et idempotentes ───────────────────
     // Hors du bloc `missing-production-tables-v3` : ce bloc est enregistre dans
     // schema_migrations et n'est jamais rejoue sur une base de production deja
