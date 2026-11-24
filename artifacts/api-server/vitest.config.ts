@@ -267,6 +267,7 @@ export default defineConfig({
       "src/tests/public-pages-fpsource.test.ts",
       "src/lib/env-database-url.test.ts",
       "src/services/db-startup-attestation.test.ts",
+      "src/services/cert-db-bootstrap.test.ts",
       "src/services/stripe-factory-securite.test.ts",
       "src/lib/addon-masquage-temporaire.test.ts",
       "src/routes/integrations-connections-guard.test.ts",

@@ -1,7 +1,7 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { getStripeKey } from "./services/stripe-factory.js";
-import { attestResolvedPool } from "./services/db-startup-attestation.js";
+import { attestResolvedPool, isCertTestService } from "./services/db-startup-attestation.js";
 import app from "./app.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
@@ -69,7 +69,7 @@ async function main() {
   // Garde ajoutee pour la certification sur Flowpoint-Test : avant toute migration
   // ou ecriture, l'identite de la base resolue est attestee (empreinte du projet).
   // N'agit que sur le service `flowpoint-test` ; sans effet sur la production.
-  if (process.env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() === "flowpoint-test") {
+  if (isCertTestService()) {
     const attestation = await attestResolvedPool(pool);
     process.stdout.write(`${JSON.stringify(attestation)}\n`);
     if (attestation.status !== "PASS") {

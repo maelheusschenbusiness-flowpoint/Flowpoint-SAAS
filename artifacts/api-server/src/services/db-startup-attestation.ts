@@ -5,6 +5,11 @@ import { pool } from "@workspace/db";
 export const RENDER_TEST_PROJECT_REF_SHA256 =
   "027d7ee0f01185369530c913fb8dedebd939683c29e28197d7b782d890599989";
 
+/** La garde d'identite de la base ne s'applique qu'au service de test ; sans effet ailleurs (Flowpoint-Main / production). */
+export function isCertTestService(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env["RENDER_SERVICE_NAME"]?.trim().toLowerCase() === "flowpoint-test";
+}
+
 export type AttestationStatus = "PASS" | "FAIL" | "UNKNOWN";
 
 export interface ResolvedDbIdentity {
