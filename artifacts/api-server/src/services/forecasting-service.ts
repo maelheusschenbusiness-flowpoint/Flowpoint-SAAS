@@ -60,6 +60,7 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
       const res = await client.query(
         `SELECT * FROM seo_forecasts
          WHERE org_id=$1 AND site_url=$2 AND source='gsc'
+         AND forecast_date >= (NOW() AT TIME ZONE 'UTC')::date
          ORDER BY forecast_date ASC, scenario ASC LIMIT 270`,
         [orgId, url]
       );
@@ -72,16 +73,28 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
           confidence: Number(r["confidence"] ?? 75),
           scenario: String(r["scenario"] ?? "realistic") as ForecastPoint["scenario"],
         }));
-        const realistic = forecasts.filter(f => f.scenario === "realistic");
+        // Defence in depth: the read already floors forecast_date at the current UTC day,
+        // but a row left over from an earlier generation must never count as a first day.
+        const today = new Date().toISOString().slice(0, 10);
+        const upcoming = forecasts.filter(point => point.date.slice(0, 10) >= today);
+        if (upcoming.length === 0) {
+          return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
+        }
+        const realistic = upcoming.filter(f => f.scenario === "realistic");
         const in30 = realistic.slice(0, 30);
         const in90 = realistic.slice(0, 90);
         const realTraffic30  = in30.reduce((s, f) => s + f.predictedTraffic, 0);
         const realTraffic90  = in90.reduce((s, f) => s + f.predictedTraffic, 0);
-        const prev30 = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
-        const growthPct = prev30 > 0 ? Math.round(((realTraffic30 - prev30) / prev30) * 100) : 0;
+        // Days 31-60 are further in the future than days 1-30: growth is measured forwards,
+        // (days 31-60 - days 1-30) / days 1-30. Fewer than 60 days or a first month
+        // without traffic means no measurable growth (0), never NaN/Infinity.
+        const secondMonthTraffic = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
+        const growthPct = realistic.length >= 60 && realTraffic30 > 0
+          ? Math.round(((secondMonthTraffic - realTraffic30) / realTraffic30) * 100)
+          : 0;
         return {
           siteUrl: url,
-          forecasts,
+          forecasts: upcoming,
           available: realistic.length > 0,
           source: "stored",
           summary: {
