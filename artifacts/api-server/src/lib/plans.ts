@@ -383,6 +383,18 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
 
+  // ── Retrait temporaire : tables absentes en production (audit) ─────────────
+  // Aucun init-*.ts ne cree ces tables et migrations/*.sql ne s'executent pas en production.
+  // Les definitions, droits et abonnements existants restent reconnus ; recreer les tables puis retirer d'ici.
+  // aiGbpPosting : gbp_post_queue, gbp_media_assets (gbp-posts.ts).
+  "aiGbpPosting",
+  // marketIntelligence : ai_market_reports (market-intelligence.ts).
+  "marketIntelligence",
+  // aiCro / revenueLeak : behavior_site_tokens, cro_recommendations, behavior_events/sessions.
+  "aiCro",
+  "revenueLeak",
+  // crmIntegration (deja ci-dessus) : crm_tokens absente.
+
   // aiWorkspaceLaunch: ai-workspace-launch.ts routes exist (POST + GET /:sessionId)
   // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
   // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
@@ -434,14 +446,10 @@ export const BETA_ADDONS = new Set<string>([
   // BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS is a valid non-empty set by design.
   //
   // Dépendance snippet onsite
+  // behavioralAI : reste BETA (inclus Ultra) ; revenueLeak / aiCro : retires (COMING_SOON, tables absentes).
   "behavioralAI",
-  "revenueLeak",
-  "aiCro",
   // Couverture données partielle / DFS non complète
   "aiForecasting",
-  "marketIntelligence",
-  // Dépendance OAuth externe
-  "aiGbpPosting",
   // Route /seo/backlinks réelle + requireAddon gate. DFS backlink integration
   // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
   "backlinkIntelligence",
@@ -586,10 +594,11 @@ const _PRO_EXCLUSIVE = new Set<string>([
   //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
   // localDominationMaps / zapierIntegration : remis en vente (Pro/Ultra), hors COMING_SOON.
   "keywordDomination",
-  "aiGbpPosting", "localDominationMaps",
-  "aiCro", "behavioralAI", "revenueLeak",
+  "localDominationMaps",
+  // behavioralAI : achat Pro retire (tables behavior_* absentes en production) ; reste inclus Ultra.
+  // aiGbpPosting, aiCro, revenueLeak, marketIntelligence : COMING_SOON (tables absentes).
   "zapierIntegration",
-  "aiForecasting", "marketIntelligence",
+  "aiForecasting",
   "enterprisePermissions",
 ]);
 

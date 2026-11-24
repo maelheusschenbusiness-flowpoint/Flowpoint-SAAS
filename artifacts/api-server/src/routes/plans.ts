@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import {
   ADDON_DEFINITIONS,
+  REMOVED_ADDONS,
   PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS,
   PLAN_ALLOWED_ADDONS,
@@ -65,7 +66,7 @@ router.get("/plans/catalog", (_req: Request, res: Response): void => {
     }
   }
 
-  const addons = Object.entries(ADDON_DEFINITIONS).map(([key, def]) => {
+  const addons = Object.entries(ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, def]) => {
     const availability = getAddonAvailability(key);
     return {
       key,
