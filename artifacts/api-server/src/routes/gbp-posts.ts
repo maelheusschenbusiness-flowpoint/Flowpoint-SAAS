@@ -49,16 +49,16 @@ router.get("/gbp-posts/scheduled", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.get("/gbp-posts/queue", async (req, res) => {
-  try {
-    const r = await db(req)(
-      `SELECT q.*, p.content, p.post_type, p.location_name
-       FROM gbp_post_queue q JOIN gbp_posts p ON p.id=q.post_id AND p.org_id=q.org_id
-       WHERE q.org_id=$1 ORDER BY q.scheduled_for ASC LIMIT 20`,
-      [org(req)]
-    );
-    res.json({ queue: r.rows, count: r.rows.length });
-  } catch { res.json({ queue: [], count: 0 }); }
+/**
+ * File de publication (gbp_post_queue) : AUCUN code n'y ecrit (la planification passe par gbp_posts.scheduled_at).
+ * Reponse explicite "non disponible" plutot qu'une liste vide qui laisserait croire a une file fonctionnelle.
+ * Aucune interface ne doit appeler cette route.
+ */
+router.get("/gbp-posts/queue", (_req, res) => {
+  res.status(501).json({
+    ok: false, available: false, code: "GBP_QUEUE_NOT_AVAILABLE",
+    error: "The GBP publication queue is not available. Use scheduled posts instead.",
+  });
 });
 
 router.post("/gbp-posts", canWrite, async (req, res) => {
@@ -227,14 +227,15 @@ router.delete("/gbp-posts/:id", canAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.get("/gbp-posts/media", async (req, res) => {
-  try {
-    const r = await db(req)(
-      `SELECT * FROM gbp_media_assets WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50`,
-      [org(req)]
-    );
-    res.json({ media: r.rows, count: r.rows.length });
-  } catch { res.json({ media: [], count: 0 }); }
+/**
+ * Mediatheque (gbp_media_assets) : aucun televersement n'existe. Seules les URL d'images HTTPS (mediaUrls) sont
+ * prises en charge a la creation d'un post. Reponse explicite "non disponible", sans interface associee.
+ */
+router.get("/gbp-posts/media", (_req, res) => {
+  res.status(501).json({
+    ok: false, available: false, code: "GBP_MEDIA_NOT_AVAILABLE",
+    error: "GBP media library is not available. Provide HTTPS image URLs (mediaUrls) on the post instead.",
+  });
 });
 
 export default router;
