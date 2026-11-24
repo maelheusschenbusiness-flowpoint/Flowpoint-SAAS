@@ -248,8 +248,12 @@
       "key": "agencyPortfolioPriorities",
       "label": "Agency Portfolio Priorities",
       "type": "feature",
-      "status": "coming_soon",
-      "plansAllowed": [],
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
       "plansIncluded": [],
       "price": {
         "amountMinor": 1900,
@@ -257,8 +261,9 @@
         "interval": "month"
       },
       "quantity": false,
-      "inBranch": false,
-      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #22 ; ajout commit 712185fe (2026-10-24), prix 19 €"
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #22 ; ajout commit 712185fe (2026-10-24), prix 19 € ; PR #517 (portage lot 2 depuis Test-Replit, garde prix : invisible et non achetable sans variable de prix Stripe) ; integre sur la branche de certification ; .agents/memory/addon-v1-testing-boundary.md (huit remplacants approuves)",
+      "gating": "price-gated"
     },
     {
       "key": "technicalSeoFixVerification",
@@ -322,8 +327,12 @@
       "key": "gbpPerformanceLeads",
       "label": "GBP Performance & Leads",
       "type": "feature",
-      "status": "coming_soon",
-      "plansAllowed": [],
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
       "plansIncluded": [],
       "price": {
         "amountMinor": 1500,
@@ -331,15 +340,20 @@
         "interval": "month"
       },
       "quantity": false,
-      "inBranch": false,
-      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #17 ; ajout PR #269 (4f6517c8, 2026-10-23), prix 15 €"
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #17 ; ajout PR #269 (4f6517c8, 2026-10-23), prix 15 € ; PR #517 (portage lot 2 depuis Test-Replit, garde prix : invisible et non achetable sans variable de prix Stripe) ; integre sur la branche de certification ; .agents/memory/addon-v1-testing-boundary.md (huit remplacants approuves)",
+      "gating": "price-gated"
     },
     {
       "key": "localLandingOpportunities",
       "label": "Local Landing Opportunities",
       "type": "feature",
-      "status": "coming_soon",
-      "plansAllowed": [],
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
       "plansIncluded": [],
       "price": {
         "amountMinor": 1500,
@@ -347,8 +361,9 @@
         "interval": "month"
       },
       "quantity": false,
-      "inBranch": false,
-      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #19 ; ajout commit 681c77cf (2026-10-23), prix 15 €"
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #19 ; ajout commit 681c77cf (2026-10-23), prix 15 € ; PR #517 (portage lot 2 depuis Test-Replit, garde prix : invisible et non achetable sans variable de prix Stripe) ; integre sur la branche de certification ; .agents/memory/addon-v1-testing-boundary.md (huit remplacants approuves)",
+      "gating": "price-gated"
     },
     {
       "key": "aiGbpPosting",
@@ -389,8 +404,11 @@
       "key": "localDominationMaps",
       "label": "Local Domination Maps",
       "type": "feature",
-      "status": "coming_soon",
-      "plansAllowed": [],
+      "status": "available",
+      "plansAllowed": [
+        "pro",
+        "ultra"
+      ],
       "plansIncluded": [],
       "price": {
         "amountMinor": 2400,
@@ -399,14 +417,17 @@
       },
       "quantity": false,
       "inBranch": true,
-      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; messages propriétaire 2026-11-21 21:20 (certification TEST) et 2026-11-24 15:59 (remise en vente) ; PR #540/#542"
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; messages propriétaire 2026-11-21 21:20 (certification TEST) et 2026-11-24 15:59 (remise en vente) ; PR #540/#542 ; remise en vente Pro/Ultra (PR #542)"
     },
     {
       "key": "localPresenceOptimizer",
       "label": "Local Presence Optimizer",
       "type": "feature",
-      "status": "coming_soon",
-      "plansAllowed": [],
+      "status": "available",
+      "plansAllowed": [
+        "pro",
+        "ultra"
+      ],
       "plansIncluded": [],
       "price": {
         "amountMinor": 900,
@@ -414,8 +435,9 @@
         "interval": "month"
       },
       "quantity": false,
-      "inBranch": false,
-      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #18 ; ajout PR #271 (6556dc3a, 2026-10-23), prix 9 €"
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #18 ; ajout PR #271 (6556dc3a, 2026-10-23), prix 9 € ; PR #517 (portage lot 2 depuis Test-Replit, garde prix : invisible et non achetable sans variable de prix Stripe) ; integre sur la branche de certification ; .agents/memory/addon-v1-testing-boundary.md (huit remplacants approuves)",
+      "gating": "price-gated"
     },
     {
       "key": "aiCro",
@@ -733,8 +755,11 @@
       "key": "zapierIntegration",
       "label": "Zapier / Make",
       "type": "feature",
-      "status": "coming_soon",
-      "plansAllowed": [],
+      "status": "available",
+      "plansAllowed": [
+        "pro",
+        "ultra"
+      ],
       "plansIncluded": [],
       "price": {
         "amountMinor": 1900,
@@ -743,7 +768,7 @@
       },
       "quantity": false,
       "inBranch": true,
-      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; commit f5ac6cda (2026-10-24, retiré des ventes) ; messages propriétaire 2026-11-21 21:20 et 2026-11-24 15:59 (remise en vente) ; PR #524/#540/#542"
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; commit f5ac6cda (2026-10-24, retiré des ventes) ; messages propriétaire 2026-11-21 21:20 et 2026-11-24 15:59 (remise en vente) ; PR #524/#540/#542 ; remise en vente Pro/Ultra (PR #542)"
     },
     {
       "key": "crmIntegration",
