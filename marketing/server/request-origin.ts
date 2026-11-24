@@ -2,7 +2,6 @@ import type { Request } from "express";
 
 const ALLOWED_ORIGINS = new Set([
   "https://flowpoint.pro",
-  "https://www.flowpoint.pro",
   "https://app.flowpoint.pro",
 ]);
 

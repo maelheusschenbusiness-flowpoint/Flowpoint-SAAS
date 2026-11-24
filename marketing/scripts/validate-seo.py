@@ -214,7 +214,7 @@ def internal_path(href: str, base_url: str) -> str | None:
         return None
     base_host = (urlsplit(base_url).hostname or "").lower()
     host = (candidate.hostname or "").lower()
-    allowed_hosts = {base_host, "flowpoint.pro", "www.flowpoint.pro"}
+    allowed_hosts = {base_host, "flowpoint.pro"}
     if host not in allowed_hosts:
         return None
     return candidate.path or "/"

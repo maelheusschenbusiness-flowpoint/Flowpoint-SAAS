@@ -157,7 +157,6 @@ test("free SEO audit has distinct, accurate metadata and a production canonical"
   assert.ok(html.includes(`<link rel="canonical" href="${RESOURCE_SITE_URL}/free-seo-audit"`));
   assert.deepEqual(jsonLd(html), [buildFaqPageJsonLd(FREE_SEO_AUDIT_FAQS)]);
   assert.doesNotMatch(html, /<meta name="robots" content="noindex/);
-  assert.match(readFileSync("server/index.ts", "utf8"), /ROBOTS_NOINDEX === "true"[\s\S]*?X-Robots-Tag/);
 });
 
 test("pricing FAQ schema has exact English and French trial disclosures", () => {

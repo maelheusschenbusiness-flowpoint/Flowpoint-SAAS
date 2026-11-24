@@ -240,6 +240,31 @@ test("funnel events are limited to the two allowed steps and deduplicated daily"
   ]);
 });
 
+test("staging host sends no commercial tracking and creates no visitor identity", async () => {
+  installWindow(
+    "accepted",
+    "https://flowpoint-marketing-staging.onrender.com/?utm_source=Google",
+  );
+  const fetchCalls: unknown[] = [];
+  globalThis.fetch = ((...args: unknown[]) => {
+    fetchCalls.push(args);
+    return Promise.resolve(new Response(null, { status: 204 }));
+  }) as typeof fetch;
+  const signupLink = {
+    href: "https://app.flowpoint.pro/signin.html?plan=pro",
+  } as HTMLAnchorElement;
+
+  captureMarketingAttribution();
+  sendFunnelEvent("landing_vue");
+  assert.equal(getFunnelVisitorId(), null);
+  assert.deepEqual(getFunnelAttribution(), {});
+  addFunnelAttributionToSignupLink(signupLink);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(fetchCalls, []);
+  assert.equal(signupLink.href, "https://app.flowpoint.pro/signin.html?plan=pro");
+});
+
 test("trial disclosure states the card requirement and links to pricing", () => {
   const withPricing = renderToStaticMarkup(createElement(TrialDisclosure));
   const withoutPricing = renderToStaticMarkup(

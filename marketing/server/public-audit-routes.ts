@@ -19,7 +19,6 @@ import {
 
 const ALLOWED_PUBLIC_ORIGINS = new Set([
   "https://flowpoint.pro",
-  "https://www.flowpoint.pro",
 ]);
 
 function hasSameOrigin(req: Request): boolean {
