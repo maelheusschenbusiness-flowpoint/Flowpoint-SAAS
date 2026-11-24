@@ -10237,20 +10237,12 @@ function renderBilling() {
     for (let _gi = allAddons.length - 1; _gi >= 0; _gi--) {
       if (allAddons[_gi].gated && allAddons[_gi].catalogMissing) allAddons.splice(_gi, 1);
     }
-    // ── Availability classification — must mirror backend COMING_SOON_ADDONS / BETA_ADDONS ──
-    // Any key listed here blocks "Activer →" and shows the correct status badge instead.
-    // Keep in sync with artifacts/api-server/src/lib/plans.ts when those sets change.
-    const _COMING_SOON_KEYS = new Set(['slaMonitoring','globalMonitoring','aiContentStrategist',
-      'abTestingAI','agencyPacks','aiExecutiveReport','aiWorkflows','crmIntegration',
-      'ssoEnterprise','aiWorkspaceLaunch','customDomain']);
-    const _BETA_KEYS = new Set(['behavioralAI','revenueLeak','aiCro','aiForecasting',
-      'marketIntelligence','reviewIntelligence','aiGbpPosting','zapierIntegration',
-      'backlinkIntelligence']);
+    // ── Fail-closed : aucune classification locale (coming soon / bêta) dans le front.
+    //    La disponibilité vient UNIQUEMENT du catalogue serveur (lib/plans.ts). Si le
+    //    catalogue n'a pas pu être chargé, aucun add-on n'est activable (jamais « Activer »
+    //    deviné) : il s'affiche « Bientôt disponible » jusqu'au rechargement. ──
     allAddons.forEach(a => {
-      // Local classification always wins — guarantees coming_soon/beta status
-      // even when the server catalog hasn't loaded or returns a stale value.
-      if (_COMING_SOON_KEYS.has(a.key)) a.availability = 'coming_soon';
-      else if (_BETA_KEYS.has(a.key) && a.availability !== 'coming_soon') a.availability = a.availability || 'beta';
+      if (a.catalogMissing) a.availability = 'coming_soon';
     });
 
     const currentPlan = ((STATE.billing && STATE.billing.plan) || me.plan || '').toLowerCase();
