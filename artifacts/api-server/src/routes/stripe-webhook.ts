@@ -251,11 +251,11 @@ async function persistAddonsFromSubscription(
 
   try {
     const { activateAddon, deactivateAddon } = await import("../services/addons-service.js");
-    const { PLAN_INCLUDED_ADDONS: PIA, ADDON_PRICE_IDS: APIDS } = await import("../lib/plans.js");
+    const { getIncludedAddonsForOrg, ADDON_PRICE_IDS: APIDS } = await import("../lib/plans.js");
     const { loadOrgData } = await import("../services/org-data.js");
     const orgInfo = await loadOrgData(orgId).catch(() => null);
     const planName = (orgInfo?.plan ?? "standard").toLowerCase();
-    const planIncluded = PIA[planName] ?? new Set<string>();
+    const planIncluded = getIncludedAddonsForOrg(planName, orgInfo?.createdAt);
 
     // ── 1. Activate addons present in this subscription's items ──────────────
     // Quantity add-ons persist their Stripe line-item quantity to org_addons.quantity

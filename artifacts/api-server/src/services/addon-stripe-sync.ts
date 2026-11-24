@@ -28,7 +28,7 @@
  *   new billing cycle and prorations.
  */
 
-import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getAddonPriceId, getPlanForPriceId } from "../lib/plans.js";
+import { ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getIncludedAddonsForOrg, getAddonPriceId, getPlanForPriceId } from "../lib/plans.js";
 import { loadBillingContext } from "./billing-context.js";
 import { createStripeClient, getStripeKey } from "./stripe-factory.js";
 import { logger } from "../lib/logger.js";
@@ -195,7 +195,7 @@ async function syncAddonWithStripeUnlocked(
 
     if (!ctx.stripeCustomerId) return { synced: false, reason: "no_subscription_id" };
 
-    const included = PLAN_INCLUDED_ADDONS[ctx.plan.toLowerCase()] ?? new Set<string>();
+    const included = getIncludedAddonsForOrg(ctx.plan, ctx.createdAt);
     if (included.has(addonKey)) return { synced: false, reason: "included_in_plan" };
 
     const stripe = await createStripeClient(stripeKey);

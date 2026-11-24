@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { ownerOnly, canAdmin, canWrite } from "../middlewares/requireRole.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, getPlanForPriceId } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS, PLAN_INCLUDED_ADDONS, getIncludedAddonsForOrg, getPlanForPriceId } from "../lib/plans.js";
 import { persistOrgData, loadOrgData, findOrgByStripeCustomer } from "../services/org-data.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient, getStripeCheckoutModeLog, getStripeKey } from "../services/stripe-factory.js";
@@ -1965,7 +1965,7 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
 
   // ── No Stripe key or no customer → return DB state (already normalised) ───
   if (!stripeKey || !stripeCustomerId) {
-    const planIncludedNoStripe = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set<string>();
+    const planIncludedNoStripe = getIncludedAddonsForOrg(plan, billingCtx.createdAt);
     const addonsNoStripe: Record<string, { active: boolean | number; includedInPlan: boolean }> = {};
     for (const [key, val] of Object.entries(billingCtx.addons)) {
       addonsNoStripe[key] = { active: val as boolean | number, includedInPlan: planIncludedNoStripe.has(key) };
@@ -2115,7 +2115,7 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
     })();
 
     // Build addons with includedInPlan flags for dashboard
-    const planIncludedSub = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set<string>();
+    const planIncludedSub = getIncludedAddonsForOrg(plan, billingCtx.createdAt);
     const addonsWithFlagsSub: Record<string, { active: boolean | number; includedInPlan: boolean }> = {};
     for (const [key, val] of Object.entries(billingCtx.addons)) {
       addonsWithFlagsSub[key] = { active: val as boolean | number, includedInPlan: planIncludedSub.has(key) };
@@ -2857,7 +2857,6 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
     const getAddonForPriceId = _plansModule.getAddonForPriceId as (id: string) => string | null;
     const FA = _plansModule.FLAG_ADDONS as unknown as Set<string>;
     const QA = _plansModule.QTY_ADDONS as unknown as Set<string>;
-    const PIA = _plansModule.PLAN_INCLUDED_ADDONS as unknown as Record<string, Set<string>>;
     const { activateAddon, deactivateAddon, getOrgAddons } = await import("../services/addons-service.js");
 
     const diagItems: Array<{
@@ -2969,9 +2968,10 @@ router.post("/billing/reconcile-subscription", ownerOnly, async (req: Request, r
     // Idempotency: deactivateAddon sets active=false without touching quantity.
     // A re-purchase via activateAddon(key, orgId, 1) correctly restores qty=1.
 
-    const billingPlan = (await loadBillingContext(orgId)).plan?.toLowerCase() ?? "";
-    // Guard A: plan-included addons for this org's current plan
-    const planIncluded: Set<string> = (PIA[billingPlan] as Set<string> | undefined) ?? new Set<string>();
+    const phase3Ctx = await loadBillingContext(orgId);
+    const billingPlan = phase3Ctx.plan?.toLowerCase() ?? "";
+    // Guard A: plan-included addons for this org's current plan (+ droits historiques préservés)
+    const planIncluded: ReadonlySet<string> = getIncludedAddonsForOrg(billingPlan, phase3Ctx.createdAt);
     // Guard B: live price IDs (Stripe-managed check)
     const { ADDON_PRICE_IDS: APIDS } = await import("../lib/plans.js") as unknown as {
       ADDON_PRICE_IDS: Record<string, string>;

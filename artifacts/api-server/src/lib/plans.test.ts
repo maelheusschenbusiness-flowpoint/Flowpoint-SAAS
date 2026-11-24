@@ -5,7 +5,7 @@
  *   1. Every key in any plan's included set must have a Stripe price ID.
  *   2. Every key in any plan's included set must be defined in ADDON_DEFINITIONS.
  *   3. One-time credit packs must never appear in any included set.
- *   4. Ultra carries Pro inclusions except retention90d, which is upgraded to retention365d.
+ *   4. Ultra inherits ALL six Pro inclusions (incl. retention90d) plus four of its own (matrice officielle).
  *   5. Pro's included set is a superset of Standard's.
  *   6. FEATURE_FLAGS must grant Pro/Ultra subscribers their bundled add-on features.
  *   7. Addon-to-feature-flag alignment for the whiteLabel→whiteLabel mapping.
@@ -59,17 +59,17 @@ describe("PLAN_INCLUDED_ADDONS integrity", () => {
     expect(found, `One-time packs must not be in PLAN_INCLUDED_ADDONS: ${found.join(", ")}`).toHaveLength(0);
   });
 
-  it("ultra carries Pro inclusions but upgrades retention90d to retention365d", () => {
+  it("ultra inherits every Pro inclusion (retention90d included) and adds retention365d", () => {
     const ultraSet = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set<string>();
     const proSet   = PLAN_INCLUDED_ADDONS["pro"]   ?? new Set<string>();
     const missing: string[] = [];
     for (const key of proSet) {
-      if (key === "retention90d") continue;
       if (!ultraSet.has(key)) missing.push(key);
     }
     expect(missing, `Pro add-ons not present in Ultra: ${missing.join(", ")}`).toHaveLength(0);
-    expect(ultraSet.has("retention90d")).toBe(false);
+    expect(ultraSet.has("retention90d")).toBe(true);
     expect(ultraSet.has("retention365d")).toBe(true);
+    expect(ultraSet.has("keywordDomination")).toBe(false);
   });
 
   it("pro's included set is a superset of standard's (cumulative model)", () => {
@@ -161,7 +161,9 @@ describe("addons entitlement merge logic", () => {
     expect(liveAddons["whiteLabel"]).toBe(true);
     expect(liveAddons["customDomain"]).toBe(true);
     expect(liveAddons["retention365d"]).toBe(true);
-    expect(liveAddons["keywordDomination"]).toBe(true);
+    expect(liveAddons["retention90d"]).toBe(true);
+    // keywordDomination : achat séparé (matrice officielle), plus inclus dans Ultra.
+    expect(liveAddons["keywordDomination"]).toBeUndefined();
   });
 });
 
