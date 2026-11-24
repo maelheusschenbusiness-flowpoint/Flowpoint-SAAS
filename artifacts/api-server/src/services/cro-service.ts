@@ -1,246 +1,345 @@
-import { randomUUID } from "crypto";
-import {
-  db,
-  croRecommendationsTable,
-  croScoresTable,
-  croExperimentsTable,
-} from "@workspace/db";
-import { eq, desc, sql, and } from "drizzle-orm";
+/**
+ * Analyse CRO d'une page RÉELLE.
+ *
+ * Principes (voir D-02 de l'audit) :
+ *  - la page est récupérée via `fetchUrlContent` (garde SSRF, DNS épinglé,
+ *    redirections validées) ; rien n'est affirmé sur une page non lue ;
+ *  - chaque constat est dérivé du HTML observé et porte sa preuve (`evidence`) ;
+ *  - aucune statistique sectorielle, aucun gain estimé, aucune « confiance »
+ *    codée en dur, aucun score synthétique calculé à partir d'un nombre de
+ *    recommandations ;
+ *  - si la page ne peut pas être lue, l'état est explicite
+ *    (`status: "unavailable"` + code + message) et AUCUNE recommandation
+ *    de remplacement n'est fabriquée ;
+ *  - l'IA est un complément facultatif : ses constats doivent citer un extrait
+ *    réellement présent dans la page, sinon ils sont écartés. Si l'IA est
+ *    indisponible, les constats déterministes restent servis et `ai.status`
+ *    vaut `"unavailable"`.
+ */
+import { fetchUrlContent, type FetchUrlResult } from "./url-fetcher.js";
 import { logger } from "../lib/logger.js";
 
-const CRO_ISSUE_TEMPLATES = [
-  {
-    type: "cta",    priority: "high",   title: "CTA principal peu visible",
-    description: "Le bouton d'action principal est en bas de page et non above the fold. 67% des visiteurs ne le voient jamais.",
-    implementation: "Dupliquer le CTA en haut de page. Utiliser une couleur contrastante (#2563EB sur fond blanc). Taille min 44px.",
-    estimatedUplift: 0.18,
-  },
-  {
-    type: "form",   priority: "high",   title: "Formulaire trop long",
-    description: "Le formulaire contient 9 champs alors que le benchmark sectoriel est à 4. Chaque champ supplémentaire réduit le taux de conversion de 11%.",
-    implementation: "Supprimer les champs non-essentiels. Déplacer les infos secondaires en étape 2. Ajouter l'autocomplete.",
-    estimatedUplift: 0.24,
-  },
-  {
-    type: "layout", priority: "medium", title: "Manque de preuve sociale",
-    description: "Aucun témoignage, note ou logo client visible above the fold. La preuve sociale augmente la confiance de +34%.",
-    implementation: "Ajouter 3 avis clients avec étoiles. Afficher le nombre de clients ou un logo client reconnu.",
-    estimatedUplift: 0.12,
-  },
-  {
-    type: "copy",   priority: "medium", title: "Proposition de valeur floue",
-    description: "Le headline principal ne communique pas clairement le bénéfice principal en < 5 secondes.",
-    implementation: "Reformuler en structure : [Qui vous aidez] + [Résultat clé] + [Délai/différentiateur]. Ex: 'Doublez vos leads locaux en 30 jours, sans agence.'",
-    estimatedUplift: 0.15,
-  },
-  {
-    type: "cta",    priority: "medium", title: "Microcopy CTA générique",
-    description: "Le texte 'Soumettre' ou 'Envoyer' réduit le CTR de 22% vs des textes orientés bénéfice.",
-    implementation: "Remplacer par : 'Recevoir mon audit gratuit', 'Commencer maintenant', 'Voir mes résultats'.",
-    estimatedUplift: 0.08,
-  },
-  {
-    type: "form",   priority: "low",    title: "Pas d'indicateur de progression",
-    description: "Les formulaires multi-étapes sans barre de progression ont 36% d'abandon en plus.",
-    implementation: "Ajouter une barre 'Étape 1/3' avec indication du temps estimé (< 2 min).",
-    estimatedUplift: 0.09,
-  },
+export type CroFindingType = "cta" | "form" | "layout" | "copy" | "trust" | "speed" | "mobile";
+export type CroPriority = "high" | "medium" | "low";
+
+export interface CroFinding {
+  id: string;
+  type: CroFindingType;
+  priority: CroPriority;
+  title: string;
+  /** Ce qui a été observé sur la page (faits, pas de benchmark). */
+  description: string;
+  /** Extrait / mesure concrète tirée de la page. */
+  evidence: string;
+  implementation: string;
+  source: "page" | "ai";
+}
+
+export interface CroPageSignals {
+  httpStatus: number | null;
+  loadTimeMs: number | null;
+  title: string | null;
+  h1Count: number;
+  formCount: number;
+  /** Nombre de champs de saisie visibles par formulaire (hors hidden/submit/button). */
+  formFieldCounts: number[];
+  ctaCount: number;
+  genericSubmitLabels: string[];
+  hasViewportMeta: boolean;
+  socialProofKeywordsFound: string[];
+  wordCount: number;
+}
+
+export type CroUnavailableCode = "PAGE_FETCH_FAILED" | "INVALID_URL";
+
+export type CroPageAnalysis =
+  | {
+      status: "ok";
+      siteUrl: string;
+      analyzedUrl: string;
+      analyzedAt: string;
+      signals: CroPageSignals;
+      findings: CroFinding[];
+      ai: { status: "ok" | "unavailable" | "skipped"; message?: string };
+      /** Aucun score synthétique : le CRO n'est pas noté à partir d'un décompte de constats. */
+      score: null;
+    }
+  | {
+      status: "unavailable";
+      siteUrl: string;
+      code: CroUnavailableCode;
+      message: string;
+      findings: [];
+      score: null;
+    };
+
+export interface CroDeps {
+  fetchPage: (url: string) => Promise<FetchUrlResult>;
+  /** Retourne le texte brut de la réponse de l'IA, ou lève si l'IA n'est pas disponible. */
+  aiChat?: (opts: { systemPrompt: string; userPrompt: string }) => Promise<string>;
+}
+
+const GENERIC_SUBMIT = /^(envoyer|soumettre|valider|submit|send|ok)$/i;
+const SOCIAL_PROOF_WORDS = [
+  "témoignage", "temoignage", "avis", "testimonial", "review", "trustpilot",
+  "ils nous font confiance", "nos clients", "clients satisfaits", "customers",
 ];
 
-// ── AI generation ────────────────────────────────────────────────────────────
-// The CRO Strategist is an AI agent: recommendations are generated per-site by
-// the model so two sites never get identical output. The static templates above
-// are ONLY a fallback when no AI provider is configured or the call fails, and
-// fallback rows are tagged source:"rules" so the UI can label them as generic.
-const VALID_CRO_TYPES = new Set(["cta", "form", "layout", "copy", "trust", "speed", "mobile"]);
-const VALID_PRIORITIES = new Set(["high", "medium", "low"]);
-
-async function generateCROWithAI(siteUrl: string): Promise<Array<{
-  page: string; type: string; priority: string; title: string;
-  description: string; implementation: string; estimatedUplift: number;
-}> | null> {
-  try {
-    const { aiChatCompletion } = await import("../lib/openai-client.js");
-    const raw = await aiChatCompletion({
-      systemPrompt:
-        "Tu es un consultant CRO senior spécialisé PME/agences francophones. " +
-        "Tu produis des recommandations d'optimisation de conversion CONCRÈTES et SPÉCIFIQUES au site analysé " +
-        "(secteur déduit du domaine, type de pages, vocabulaire du métier). Réponds UNIQUEMENT en JSON.",
-      userPrompt:
-        `Site à analyser : ${siteUrl}\n` +
-        "Génère 6 à 10 recommandations CRO réparties sur les pages probables du site " +
-        "(accueil, contact, services/produits, tarifs). " +
-        'Format JSON strict : {"recommendations":[{"page":"/","type":"cta|form|layout|copy|trust|speed|mobile",' +
-        '"priority":"high|medium|low","title":"...","description":"... (chiffres/benchmarks à l\'appui)",' +
-        '"implementation":"étapes concrètes","estimatedUplift":0.12}]} ' +
-        "estimatedUplift est un ratio entre 0.03 et 0.30. Tout le texte en français.",
-      json: true,
-      maxTokens: 2000,
-    });
-    const parsed = JSON.parse(raw) as { recommendations?: unknown[] };
-    const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
-    const clean = recs
-      .map((r) => {
-        const o = r as Record<string, unknown>;
-        const uplift = Number(o["estimatedUplift"]);
-        return {
-          page:            typeof o["page"] === "string" && (o["page"] as string).startsWith("/") ? (o["page"] as string).slice(0, 120) : "/",
-          type:            VALID_CRO_TYPES.has(String(o["type"])) ? String(o["type"]) : "layout",
-          priority:        VALID_PRIORITIES.has(String(o["priority"])) ? String(o["priority"]) : "medium",
-          title:           String(o["title"] ?? "").slice(0, 200),
-          description:     String(o["description"] ?? "").slice(0, 1000),
-          implementation:  String(o["implementation"] ?? "").slice(0, 1000),
-          estimatedUplift: Number.isFinite(uplift) ? Math.min(Math.max(uplift, 0.01), 0.5) : 0.1,
-        };
-      })
-      .filter((r) => r.title && r.description);
-    return clean.length >= 3 ? clean : null;
-  } catch (err) {
-    logger.warn({ err: (err as Error)?.message }, "[CRO] AI generation failed — falling back to rule templates");
-    return null;
-  }
+function stripTags(s: string): string {
+  return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
-export async function generateCRORecommendations(orgId: string, siteUrl: string): Promise<void> {
-  try {
-    const existingCount = await db.select()
-      .from(croRecommendationsTable)
-      .where(and(
-        eq(croRecommendationsTable.orgId, orgId),
-        eq(croRecommendationsTable.siteUrl, siteUrl),
-      ))
-      .limit(1);
+function attr(tag: string, name: string): string | null {
+  const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+  return m ? (m[2] ?? m[3] ?? m[4] ?? "") : null;
+}
 
-    if (existingCount.length > 0) return;
+/** Extrait des signaux structurels du HTML (fonction pure, testable). */
+export function extractCroSignals(html: string, page: Pick<FetchUrlResult, "statusCode" | "loadTimeMs" | "title" | "wordCount" | "bodyText">): CroPageSignals {
+  const clean = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ");
 
-    // 1. AI-personalized generation (per-site, non-identical output)
-    const aiRecs = await generateCROWithAI(siteUrl);
-    if (aiRecs) {
-      for (const r of aiRecs) {
-        await db.insert(croRecommendationsTable).values({
-          id:              randomUUID(),
-          orgId,
-          siteUrl,
-          page:            r.page,
-          type:            r.type,
-          priority:        r.priority,
-          title:           r.title,
-          description:     r.description,
-          implementation:  r.implementation,
-          estimatedUplift: r.estimatedUplift,
-          status:          "pending",
-          aiGenerated:     true,
-          source:          "ai",
-          metadata:        { confidence: 0.75, model: "openai" },
-        }).onConflictDoNothing();
+  const h1Count = (clean.match(/<h1[\s>]/gi) ?? []).length;
+
+  const formBlocks = clean.match(/<form[\s\S]*?<\/form>/gi) ?? [];
+  const formFieldCounts: number[] = [];
+  const genericSubmitLabels: string[] = [];
+  let formCtas = 0;
+  for (const block of formBlocks) {
+    let fields = 0;
+    for (const tag of block.match(/<input\b[^>]*>/gi) ?? []) {
+      const type = (attr(tag, "type") ?? "text").toLowerCase();
+      if (["hidden", "submit", "button", "image", "reset"].includes(type)) {
+        if (type === "submit" || type === "button") {
+          formCtas++;
+          const v = (attr(tag, "value") ?? "").trim();
+          if (v && GENERIC_SUBMIT.test(v)) genericSubmitLabels.push(v);
+        }
+        continue;
       }
-      await upsertCROScore(orgId, siteUrl, "/");
-      return;
+      fields++;
     }
-
-    // 2. Fallback: deterministic rule templates (AI unavailable) — tagged "rules"
-    const pages = ["/", "/contact", "/services", "/tarifs"];
-    for (const page of pages) {
-      const pageHash = page.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffff, 0);
-      const count = (pageHash % 3) + 2;
-      const templates = CRO_ISSUE_TEMPLATES.slice(0, count);
-
-      for (const t of templates) {
-        const id = randomUUID();
-        await db.insert(croRecommendationsTable).values({
-          id,
-          orgId,
-          siteUrl,
-          page,
-          type:            t.type,
-          priority:        t.priority,
-          title:           t.title,
-          description:     t.description,
-          implementation:  t.implementation,
-          estimatedUplift: t.estimatedUplift,
-          status:          "pending",
-          aiGenerated:     false,
-          source:          "rules",
-          metadata:        { confidence: 0.85 },
-        }).onConflictDoNothing();
-      }
+    fields += (block.match(/<select\b/gi) ?? []).length + (block.match(/<textarea\b/gi) ?? []).length;
+    for (const m of block.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)) {
+      const type = (attr(m[1] ?? "", "type") ?? "submit").toLowerCase();
+      if (type === "reset") continue;
+      formCtas++;
+      const label = stripTags(m[2] ?? "");
+      if (label && GENERIC_SUBMIT.test(label)) genericSubmitLabels.push(label);
     }
-
-    await upsertCROScore(orgId, siteUrl, "/");
-  } catch (err) {
-    logger.error({ err }, "[CRO] Failed to generate recommendations");
+    formFieldCounts.push(fields);
   }
-}
 
-export async function upsertCROScore(orgId: string, siteUrl: string, page: string): Promise<void> {
-  try {
-    const id = `crs_${orgId}_${siteUrl}_${page}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80);
+  // CTA hors formulaires : <button> et liens stylés « bouton ».
+  const outside = clean.replace(/<form[\s\S]*?<\/form>/gi, " ");
+  let ctaCount = formCtas;
+  ctaCount += (outside.match(/<button\b/gi) ?? []).length;
+  for (const m of outside.matchAll(/<a\b([^>]*)>/gi)) {
+    const cls = attr(m[1] ?? "", "class") ?? "";
+    const role = attr(m[1] ?? "", "role") ?? "";
+    if (/\b(btn|button|cta)\b/i.test(cls) || role.toLowerCase() === "button") ctaCount++;
+  }
 
-    const [recRow] = await db.select({
-      highCount:   sql<number>`count(*) filter (where priority = 'high')`,
-      medCount:    sql<number>`count(*) filter (where priority = 'medium')`,
-      totalUplift: sql<number>`sum(estimated_uplift)`,
-    }).from(croRecommendationsTable)
-      .where(and(
-        eq(croRecommendationsTable.orgId, orgId),
-        eq(croRecommendationsTable.siteUrl, siteUrl),
-      ));
-
-    const highCount   = Number(recRow?.highCount  ?? 2);
-    const medCount    = Number(recRow?.medCount   ?? 2);
-    const totalUplift = Number(recRow?.totalUplift ?? 0.5);
-
-    const score         = Math.max(20, Math.min(95, 100 - highCount * 12 - medCount * 5));
-    const frictionScore = Math.max(20, score - 8);
-    const ctaScore      = Math.min(95, score + 5);
-    const formScore     = Math.max(15, score - 15);
-    const mobileScore   = Math.max(20, score - 6);
-    const copyScore     = Math.min(95, score + 3);
-
-    void totalUplift;
-
-    await db.insert(croScoresTable).values({
-      id,
-      orgId,
-      siteUrl,
-      page,
-      overallScore: score,
-      frictionScore,
-      ctaScore,
-      formScore,
-      mobileScore,
-      copyScore,
-    }).onConflictDoNothing();
-  } catch { /* silent */ }
-}
-
-export async function getCROData(orgId: string, siteUrl?: string): Promise<{
-  recommendations: Array<typeof croRecommendationsTable.$inferSelect>;
-  scores:          Array<typeof croScoresTable.$inferSelect>;
-  experiments:     Array<typeof croExperimentsTable.$inferSelect>;
-  summary: { totalRecs: number; highPriority: number; estimatedUpliftTotal: number; implementedCount: number };
-}> {
-  const recWhere   = siteUrl
-    ? and(eq(croRecommendationsTable.orgId, orgId), eq(croRecommendationsTable.siteUrl, siteUrl))
-    : eq(croRecommendationsTable.orgId, orgId);
-  const scoreWhere = siteUrl
-    ? and(eq(croScoresTable.orgId, orgId), eq(croScoresTable.siteUrl, siteUrl))
-    : eq(croScoresTable.orgId, orgId);
-
-  const [recs, scores, exps] = await Promise.all([
-    db.select().from(croRecommendationsTable).where(recWhere).orderBy(desc(croRecommendationsTable.createdAt)).limit(30),
-    db.select().from(croScoresTable).where(scoreWhere).limit(20),
-    db.select().from(croExperimentsTable).where(eq(croExperimentsTable.orgId, orgId)).orderBy(desc(croExperimentsTable.createdAt)).limit(10),
-  ]);
-
-  const highPriority         = recs.filter(r => r.priority === "high").length;
-  const estimatedUpliftTotal = Math.round(recs.reduce((s, r) => s + (r.estimatedUplift ?? 0), 0) * 100);
-  const implementedCount     = recs.filter(r => r.status === "implemented").length;
+  const text = (page.bodyText ?? stripTags(clean)).toLowerCase();
+  const socialProofKeywordsFound = SOCIAL_PROOF_WORDS.filter((w) => text.includes(w));
 
   return {
-    recommendations: recs,
-    scores,
-    experiments: exps,
-    summary: { totalRecs: recs.length, highPriority, estimatedUpliftTotal, implementedCount },
+    httpStatus: page.statusCode ?? null,
+    loadTimeMs: page.loadTimeMs ?? null,
+    title: page.title ?? null,
+    h1Count,
+    formCount: formBlocks.length,
+    formFieldCounts,
+    ctaCount,
+    genericSubmitLabels: [...new Set(genericSubmitLabels)],
+    hasViewportMeta: /<meta[^>]+name=["']viewport["']/i.test(clean),
+    socialProofKeywordsFound,
+    wordCount: page.wordCount ?? 0,
   };
+}
+
+/** Constats déterministes : uniquement ce qui est observé sur la page. */
+export function deriveCroFindings(s: CroPageSignals): CroFinding[] {
+  const out: CroFinding[] = [];
+
+  if (s.ctaCount === 0) {
+    out.push({
+      id: "no-cta", type: "cta", priority: "high",
+      title: "Aucun appel à l'action détecté dans le HTML de la page",
+      description: "Aucun bouton, formulaire ni lien de type bouton n'a été trouvé dans le HTML servi. Il peut être injecté par JavaScript, auquel cas ce constat ne s'applique pas.",
+      evidence: "0 bouton / lien bouton / formulaire dans le HTML initial",
+      implementation: "Vérifier qu'une action principale (contact, devis, achat) est visible sans défilement et présente dans le HTML.",
+      source: "page",
+    });
+  }
+
+  s.formFieldCounts.forEach((n, i) => {
+    if (n >= 7) {
+      out.push({
+        id: `form-long-${i}`, type: "form", priority: "medium",
+        title: "Formulaire comportant de nombreux champs",
+        description: `Le formulaire n°${i + 1} contient ${n} champs de saisie visibles. Chaque champ demande un effort au visiteur ; vérifiez lesquels sont réellement nécessaires.`,
+        evidence: `${n} champs dans le formulaire n°${i + 1}`,
+        implementation: "Retirer les champs non essentiels ou répartir la saisie en plusieurs étapes, puis mesurer l'effet sur vos conversions.",
+        source: "page",
+      });
+    }
+  });
+
+  if (s.genericSubmitLabels.length > 0) {
+    out.push({
+      id: "generic-submit", type: "cta", priority: "low",
+      title: "Libellé de bouton générique",
+      description: `Un bouton d'envoi utilise un libellé générique (« ${s.genericSubmitLabels.join("», «")} »). Un libellé qui décrit le bénéfice est généralement plus clair.`,
+      evidence: `Libellés relevés : ${s.genericSubmitLabels.join(", ")}`,
+      implementation: "Reformuler le libellé en indiquant ce que le visiteur obtient (ex. « Recevoir mon devis »), puis tester.",
+      source: "page",
+    });
+  }
+
+  if (s.h1Count === 0) {
+    out.push({
+      id: "no-h1", type: "copy", priority: "medium",
+      title: "Aucun titre principal (H1) sur la page",
+      description: "Le HTML ne contient pas de balise H1 : la proposition de valeur n'est pas portée par un titre principal identifiable.",
+      evidence: "0 balise <h1>",
+      implementation: "Ajouter un H1 qui formule clairement le bénéfice principal de la page.",
+      source: "page",
+    });
+  } else if (s.h1Count > 1) {
+    out.push({
+      id: "multi-h1", type: "copy", priority: "low",
+      title: "Plusieurs titres principaux (H1)",
+      description: `La page contient ${s.h1Count} balises H1, ce qui dilue le message principal.`,
+      evidence: `${s.h1Count} balises <h1>`,
+      implementation: "Conserver un seul H1 pour la proposition de valeur et rétrograder les autres en H2.",
+      source: "page",
+    });
+  }
+
+  if (!s.hasViewportMeta) {
+    out.push({
+      id: "no-viewport", type: "mobile", priority: "medium",
+      title: "Balise viewport absente",
+      description: "La page ne déclare pas de balise meta viewport : l'affichage mobile risque de ne pas être adapté.",
+      evidence: "Aucune <meta name=\"viewport\">",
+      implementation: "Ajouter <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> et vérifier l'affichage mobile.",
+      source: "page",
+    });
+  }
+
+  if (s.socialProofKeywordsFound.length === 0 && s.wordCount > 0) {
+    out.push({
+      id: "no-social-proof", type: "trust", priority: "low",
+      title: "Aucun élément de preuve sociale repéré dans le texte",
+      description: "Aucun terme lié aux avis, témoignages ou références clients n'apparaît dans le texte de la page. Ils peuvent exister sous forme d'images ou être chargés dynamiquement.",
+      evidence: "0 occurrence de : témoignage, avis, testimonial, review, nos clients…",
+      implementation: "Si vous disposez d'avis ou de références clients réels, les afficher près de l'appel à l'action.",
+      source: "page",
+    });
+  }
+
+  if (s.loadTimeMs !== null && s.loadTimeMs > 3000) {
+    out.push({
+      id: "slow-response", type: "speed", priority: "medium",
+      title: "Réponse serveur lente lors de la mesure",
+      description: `Le document HTML a été reçu en ${s.loadTimeMs} ms depuis nos serveurs (mesure unique, à confirmer).`,
+      evidence: `${s.loadTimeMs} ms pour le document HTML`,
+      implementation: "Confirmer avec un outil de performance puis réduire le temps de réponse (cache, hébergement, poids de la page).",
+      source: "page",
+    });
+  }
+
+  return out;
+}
+
+const VALID_TYPES = new Set<string>(["cta", "form", "layout", "copy", "trust", "speed", "mobile"]);
+const VALID_PRIORITIES = new Set<string>(["high", "medium", "low"]);
+
+async function aiFindings(
+  aiChat: NonNullable<CroDeps["aiChat"]>,
+  page: FetchUrlResult,
+  signals: CroPageSignals,
+): Promise<CroFinding[]> {
+  const text = (page.bodyText ?? "").slice(0, 6000);
+  const raw = await aiChat({
+    systemPrompt:
+      "Tu es un consultant CRO senior. Tu analyses UNIQUEMENT le contenu fourni. " +
+      "Chaque constat doit citer dans `quote` un extrait EXACT du texte fourni. " +
+      "N'invente aucune statistique, benchmark ni gain chiffré. Réponds en JSON strict.",
+    userPrompt:
+      `URL : ${page.url}\nTitre : ${page.title ?? "(aucun)"}\n` +
+      `Titres : ${(page.headings ?? []).map((h) => `H${h.level} ${h.text}`).join(" | ")}\n` +
+      `Signaux : ${JSON.stringify(signals)}\n\nTexte de la page :\n${text}\n\n` +
+      'Format : {"findings":[{"type":"cta|form|layout|copy|trust|speed|mobile","priority":"high|medium|low",' +
+      '"title":"...","description":"...","quote":"extrait exact","implementation":"..."}]} (0 à 5 constats, en français).',
+  });
+  const parsed = JSON.parse(raw) as { findings?: unknown[] };
+  const haystack = text.toLowerCase();
+  const out: CroFinding[] = [];
+  for (const f of Array.isArray(parsed.findings) ? parsed.findings : []) {
+    const o = (f ?? {}) as Record<string, unknown>;
+    const quote = String(o["quote"] ?? "").trim();
+    const title = String(o["title"] ?? "").trim();
+    const description = String(o["description"] ?? "").trim();
+    // Anti-hallucination : le constat doit s'appuyer sur un extrait réellement présent.
+    if (!title || !description || quote.length < 8 || !haystack.includes(quote.toLowerCase())) continue;
+    out.push({
+      id: `ai-${out.length + 1}`,
+      type: (VALID_TYPES.has(String(o["type"])) ? String(o["type"]) : "copy") as CroFindingType,
+      priority: (VALID_PRIORITIES.has(String(o["priority"])) ? String(o["priority"]) : "medium") as CroPriority,
+      title: title.slice(0, 200),
+      description: description.slice(0, 800),
+      evidence: `« ${quote.slice(0, 300)} »`,
+      implementation: String(o["implementation"] ?? "").slice(0, 800),
+      source: "ai",
+    });
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+async function defaultAiChat(opts: { systemPrompt: string; userPrompt: string }): Promise<string> {
+  const { aiChatCompletion } = await import("../lib/openai-client.js");
+  return aiChatCompletion({ ...opts, json: true, maxTokens: 1200 });
+}
+
+export async function analyzeCroPage(siteUrl: string, deps?: Partial<CroDeps>): Promise<CroPageAnalysis> {
+  const fetchPage = deps?.fetchPage ?? ((u: string) => fetchUrlContent(u, { includeHtml: true }));
+  const aiChat = deps?.aiChat ?? defaultAiChat;
+
+  let url: URL;
+  try { url = new URL(siteUrl); } catch {
+    return { status: "unavailable", siteUrl, code: "INVALID_URL", message: "URL du site invalide.", findings: [], score: null };
+  }
+
+  const page = await fetchPage(url.toString());
+  if (!page.ok || typeof page.html !== "string") {
+    return {
+      status: "unavailable", siteUrl, code: "PAGE_FETCH_FAILED",
+      message: `La page n'a pas pu être analysée : ${page.error ?? "contenu HTML indisponible"}. Aucune recommandation n'est générée sans lecture de la page.`,
+      findings: [], score: null,
+    };
+  }
+
+  const signals = extractCroSignals(page.html, page);
+  const findings = deriveCroFindings(signals);
+
+  let ai: { status: "ok" | "unavailable" | "skipped"; message?: string } = { status: "ok" };
+  try {
+    findings.push(...(await aiFindings(aiChat, page, signals)));
+  } catch (err) {
+    const notConfigured = (err as Error)?.message === "AI_NOT_CONFIGURED";
+    ai = {
+      status: "unavailable",
+      message: notConfigured
+        ? "L'analyse IA n'est pas configurée : seuls les constats mesurés sur la page sont affichés."
+        : "L'analyse IA est momentanément indisponible : seuls les constats mesurés sur la page sont affichés.",
+    };
+    if (!notConfigured) logger.warn({ err: (err as Error)?.message }, "[CRO] AI enrichment failed");
+  }
+
+  return { status: "ok", siteUrl, analyzedUrl: page.url, analyzedAt: new Date().toISOString(), signals, findings, ai, score: null };
 }

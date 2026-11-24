@@ -76,6 +76,18 @@ export default defineConfig({
       "src/services/gsc-keyword-data-schema-db.test.ts",
       // Local Domination Maps : local_opportunities / local_visibility_scores (absentes)
       "src/services/local-maps-tables-db.test.ts",
+      // Behavioral AI / AI CRO / Revenue Leak : tables, ingestion par jeton de site, analyses
+      "src/routes/behavioral-chain-db.test.ts",
+      "src/tests/revenue-leak-attribution-ui.test.ts",
+      "src/routes/behavioral-snippet.test.ts",
+      "src/routes/cro-recommendation-state.test.ts",
+      "src/routes/revenue-leak-ga4.test.ts",
+      "src/routes/revenue-leak-ownership.test.ts",
+      "src/services/behavioral-service.test.ts",
+      "src/services/behavioral-session-id.test.ts",
+      "src/services/conversion-observations.test.ts",
+      "src/services/cro-service.test.ts",
+      "src/services/revenue-leak-attribution.test.ts",
       // [lot1:organicCampaignTracker]
       "src/routes/organic-campaign-tracker.test.ts",
       "src/services/organic-campaign-tracker.test.ts",

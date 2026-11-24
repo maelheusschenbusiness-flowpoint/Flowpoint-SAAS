@@ -149,7 +149,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
         [orgId]
       ),
       pool.query(
-        `SELECT COUNT(*) as count, COALESCE(SUM(estimated_monthly_loss), 0) as total
+        `SELECT COUNT(*) as count,
+                COALESCE(SUM(estimated_monthly_loss) FILTER (
+                  WHERE metadata->>'financialClassification'='measured'
+                    AND metadata->>'currency'='EUR'
+                ), 0) as total
          FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
         [orgId]
       ),
@@ -187,9 +191,11 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
          ORDER BY recorded_date DESC LIMIT 90`,
         [orgId]
       ).catch(() => ({ rows: [] as Array<{ date: string; value: string }> })),
-      // Revenue opportunity analyzed = any row exists in revenue_leaks (regardless of status)
+      // Revenue observations depend on recent behavioral events, not legacy estimated-loss rows.
       pool.query(
-        `SELECT 1 FROM revenue_leaks WHERE org_id=$1 LIMIT 1`,
+        `SELECT 1 FROM behavior_events
+          WHERE org_id=$1 AND created_at >= now() - interval '30 days'
+          LIMIT 1`,
         [orgId]
       ).catch(() => ({ rows: [] })),
     ]);
