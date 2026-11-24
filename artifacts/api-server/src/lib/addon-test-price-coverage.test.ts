@@ -106,7 +106,6 @@ it("enables Custom Domain beta only on a configured TEST target and keeps it Ult
   // Opening this beta must not release unrelated roadmap add-ons.
   expect(plans.getAddonAvailability("aiContentStrategist")).toBe("coming_soon");
   expect(plans.getAddonAvailability("ssoEnterprise")).toBe("coming_soon");
-  expect(plans.getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
 
   const { createBillingQuote } = await import("../services/billing-quote.js");
   for (const plan of ["standard", "pro"]) {

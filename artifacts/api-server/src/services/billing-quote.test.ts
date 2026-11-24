@@ -249,11 +249,21 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
     }
   });
 
-  it("blocks slaMonitoring, aiWorkspaceLaunch, crmIntegration, ssoEnterprise explicitly", () => {
-    for (const key of ["slaMonitoring", "aiWorkspaceLaunch", "crmIntegration", "ssoEnterprise"]) {
+  it("blocks slaMonitoring, crmIntegration, ssoEnterprise explicitly", () => {
+    for (const key of ["slaMonitoring", "crmIntegration", "ssoEnterprise"]) {
       expect(
         () => createBillingQuote({ plan: "ultra", addons: { [key]: true } }),
       ).toThrow("ADDON_COMING_SOON");
+    }
+  });
+
+  it("aiWorkspaceLaunch (retire, arbitrage proprietaire 24/11/2026) est refuse comme prioritySupport : ADDON_REMOVED, jamais coming soon", () => {
+    expect(REMOVED_ADDONS.has("aiWorkspaceLaunch")).toBe(true);
+    expect(COMING_SOON_ADDONS.has("aiWorkspaceLaunch")).toBe(false);
+    for (const plan of ["standard", "pro", "ultra"]) {
+      expect(
+        () => createBillingQuote({ plan, addons: { aiWorkspaceLaunch: true } }),
+      ).toThrow("ADDON_REMOVED");
     }
   });
 
