@@ -318,10 +318,31 @@ export async function getPerformance(
 export async function publishGBPPost(
   orgId: string,
   locationName: string,
-  post: { summary: string; callToAction?: { actionType: string; url: string } }
-): Promise<{ ok: boolean; error?: string }> {
+  post: {
+    summary: string;
+    topicType?: "STANDARD" | "EVENT" | "OFFER";
+    languageCode?: string;
+    callToAction?: { actionType: string; url?: string };
+    media?: Array<{ mediaFormat: "PHOTO"; sourceUrl: string }>;
+    event?: { title: string; schedule: {
+      startDate: { year: number; month: number; day: number };
+      startTime: { hours: number; minutes: number };
+      endDate: { year: number; month: number; day: number };
+      endTime: { hours: number; minutes: number };
+    }};
+    offer?: { couponCode?: string; redeemOnlineUrl?: string; termsConditions?: string };
+  }
+): Promise<{ ok: boolean; error?: string; postName?: string; code?: string }> {
+  let token: string;
   try {
-    const token = await getValidToken(orgId);
+    token = await getValidToken(orgId);
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    // Jamais connecté / jeton expiré sans refresh : action utilisateur requise (reconnecter Google).
+    if (/not connected|no refresh token/i.test(msg)) return { ok: false, error: msg, code: "GOOGLE_NOT_CONNECTED" };
+    return { ok: false, error: msg, code: "GOOGLE_AUTH_FAILED" };
+  }
+  try {
     const res = await fetch(
       `https://mybusiness.googleapis.com/v4/${locationName}/localPosts`,
       {
@@ -331,10 +352,21 @@ export async function publishGBPPost(
         signal:  AbortSignal.timeout(12_000),
       }
     );
-    if (!res.ok) return { ok: false, error: `GBP API ${res.status}` };
-    return { ok: true };
+    if (!res.ok) {
+      const code = res.status === 401 ? "GOOGLE_AUTH_FAILED"
+        : res.status === 403 ? "GBP_API_FORBIDDEN"
+        : res.status === 429 ? "GBP_API_RATE_LIMITED"
+        : res.status >= 500 ? "GBP_API_UNAVAILABLE"
+        : "GBP_API_REJECTED";
+      return { ok: false, error: `GBP API ${res.status}`, code };
+    }
+    const body = await res.json() as { name?: string };
+    // Succès réel = Google a renvoyé l'identifiant de la ressource créée.
+    if (!body.name) return { ok: false, error: "GBP API: réponse sans identifiant de post", code: "GBP_API_REJECTED" };
+    return { ok: true, postName: body.name };
   } catch (e: any) {
-    return { ok: false, error: e.message };
+    // Réseau / délai dépassé / réponse illisible.
+    return { ok: false, error: e.message, code: "GBP_API_UNAVAILABLE" };
   }
 }
 
