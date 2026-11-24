@@ -158,6 +158,33 @@ export async function initBehavioralCroTables(): Promise<void> {
         END IF;
       END $$;
     `);
+    // Cle primaire par organisation : l'identifiant de session est genere cote navigateur du
+    // site client, donc deux organisations peuvent legitimement recevoir le meme id. Avec
+    // PRIMARY KEY (id) seule, la session de la 2e organisation etait silencieusement perdue
+    // (ON CONFLICT DO NOTHING). Passage a PRIMARY KEY (org_id, id) : aucune ligne modifiee ni
+    // supprimee, idempotent (ne fait rien si la cle est deja composite), verrou pris avant la
+    // verification pour que deux instances qui demarrent ensemble ne se marchent pas dessus.
+    await run(client, `
+      DO $$
+      DECLARE pk_name text; pk_cols text[];
+      BEGIN
+        IF to_regclass('public.behavior_sessions') IS NULL THEN RETURN; END IF;
+        LOCK TABLE public.behavior_sessions IN ACCESS EXCLUSIVE MODE;
+        SELECT c.conname, array_agg(a.attname::text ORDER BY k.ord)
+          INTO pk_name, pk_cols
+          FROM pg_constraint c
+          CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+          JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+         WHERE c.conrelid = 'public.behavior_sessions'::regclass AND c.contype = 'p'
+         GROUP BY c.conname;
+        IF pk_cols IS NULL OR pk_cols <> ARRAY['org_id','id'] THEN
+          IF pk_name IS NOT NULL THEN
+            EXECUTE format('ALTER TABLE public.behavior_sessions DROP CONSTRAINT %I', pk_name);
+          END IF;
+          ALTER TABLE public.behavior_sessions ADD PRIMARY KEY (org_id, id);
+        END IF;
+      END $$;
+    `);
     await run(client, `CREATE INDEX IF NOT EXISTS behavior_sessions_org_site_idx ON behavior_sessions(org_id,site_url)`);
     await run(client, `CREATE INDEX IF NOT EXISTS behavior_sessions_org_id_idx ON behavior_sessions(org_id)`);
     await applyTenantRls(client, "behavior_sessions", false);
@@ -208,6 +235,19 @@ export async function initBehavioralCroTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS behavior_insights_org_site_created_idx ON behavior_insights(org_id,site_url,created_at DESC)`);
     await run(client, `CREATE INDEX IF NOT EXISTS behavior_insights_org_id_idx ON behavior_insights(org_id)`);
     await applyTenantRls(client, "behavior_insights", false);
+
+    // ── behavior_nonces : anti-rejeu partage entre instances (ingestion publique) ──
+    // Aucune donnee client : couple (site, nonce) + echeance. Purge des lignes expirees
+    // par le service (behavioral-session-auth.ts). Pas de RLS : ecrite avant tout contexte d'org.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS behavior_nonces (
+        site_url TEXT NOT NULL,
+        nonce TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (site_url, nonce)
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS behavior_nonces_expires_idx ON behavior_nonces(expires_at)`);
 
     // ── behavior_site_tokens (empreinte SHA-256 uniquement) ──────────────────
     await run(client, `

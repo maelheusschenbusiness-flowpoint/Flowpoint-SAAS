@@ -236,6 +236,50 @@ export function requireAddon(
   };
 }
 
+// ── Entitlement par organisation (hors requete authentifiee) ───────────────────
+// Utilise par l'ingestion publique Behavioral : l'organisation vient du jeton de site, pas
+// d'une session. Meme regle que requireAddon (inclus dans le plan OU add-on actif).
+// Cache court en memoire (par instance) : une revocation prend effet en moins de TTL.
+export type AddonEntitlement = "granted" | "denied" | "unavailable";
+const ENTITLEMENT_TTL_MS = 30_000;
+const _entitlementCache = new Map<string, { value: "granted" | "denied"; exp: number }>();
+
+export function clearAddonEntitlementCache(): void { _entitlementCache.clear(); }
+
+export async function resolveOrgAddonEntitlement(orgId: string, addonKey: string): Promise<AddonEntitlement> {
+  if (!orgId || orgId === "default") {
+    // Meme comportement que requireAddon : fail-open en dev, refus en production.
+    return isProd() ? "denied" : "granted";
+  }
+  const cacheKey = `${orgId}|${addonKey}`;
+  const hit = _entitlementCache.get(cacheKey);
+  if (hit && hit.exp > Date.now()) return hit.value;
+  const plan = await resolvePlanFromDB({ orgId } as unknown as Request);
+  if (plan === null) return "unavailable";
+  let value: "granted" | "denied" = "denied";
+  if ((PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(addonKey)) {
+    value = "granted";
+  } else {
+    try {
+      const client = await pool.connect();
+      try {
+        const r = await client.query<{ active: boolean }>(
+          `SELECT active FROM org_addons WHERE org_id = $1 AND addon_key = $2 LIMIT 1`,
+          [orgId, addonKey],
+        );
+        if (r.rows.length > 0 && r.rows[0].active) value = "granted";
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      logger.error({ err, addonKey, orgId }, "[PlanGate] resolveOrgAddonEntitlement DB query failed");
+      return isProd() ? "unavailable" : "granted";
+    }
+  }
+  _entitlementCache.set(cacheKey, { value, exp: Date.now() + ENTITLEMENT_TTL_MS });
+  return value;
+}
+
 /**
  * requireAddonOrFeature — grants access when EITHER:
  *   a) the plan's canonical feature flag (FEATURE_FLAGS) is enabled, OR

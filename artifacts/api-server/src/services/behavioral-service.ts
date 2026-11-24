@@ -74,7 +74,7 @@ export async function upsertSession(session: {
       bounce:      true,
       engagementScore: 0,
       rageClicks:  0,
-    }).onConflictDoNothing();
+    }).onConflictDoNothing({ target: [behaviorSessionsTable.orgId, behaviorSessionsTable.id] });
     return true;
   } catch (err) {
     logger.error({ err }, "[Behavioral] Failed to upsert session");

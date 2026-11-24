@@ -12,7 +12,14 @@ const mocks = vi.hoisted(() => ({ orgDb: vi.fn() }));
 vi.mock("@workspace/db", () => ({
   db: {}, behaviorSiteTokensTable: {}, behaviorEventsTable: {}, croExperimentsTable: {},
 }));
-vi.mock("../middlewares/planGate.js", () => ({ requireAddon: () => (_r: unknown, _s: unknown, next: () => void) => next() }));
+vi.mock("../middlewares/planGate.js", () => ({
+  requireAddon: () => (_r: unknown, _s: unknown, next: () => void) => next(),
+  resolveOrgAddonEntitlement: async () => "granted",
+}));
+vi.mock("../middlewares/requireRole.js", () => ({ canWrite: (_r: unknown, _s: unknown, next: () => void) => next() }));
+vi.mock("../services/behavioral-session-auth.js", () => ({
+  MAX_TS_SKEW_MS: 300000, issueSessionToken: vi.fn(), verifySessionToken: vi.fn(), consumeNonce: vi.fn(),
+}));
 vi.mock("../middlewares/rateLimiter.js", () => ({ behavioralRateLimit: () => (_r: unknown, _s: unknown, next: () => void) => next() }));
 vi.mock("../services/behavioral-service.js", () => ({
   trackBehaviorEvent: vi.fn(), upsertSession: vi.fn(), generateBehaviorInsights: vi.fn(), getBehaviorInsights: vi.fn(),

@@ -17,8 +17,10 @@ vi.mock("@workspace/db", async (importOriginal) => importOriginal<typeof import(
 vi.mock("../lib/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn() },
 }));
+// Droits d'acces : voir behavioral-access.test.ts (gates, entitlement a l'ingestion). Ici, droits accordes.
 vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  resolveOrgAddonEntitlement: async () => "granted",
 }));
 vi.mock("../middlewares/requireRole.js", () => ({
   canWrite: (_req: unknown, _res: unknown, next: () => void) => next(),
@@ -284,4 +286,69 @@ describe("Behavioral AI : chaine complete avec jeton de site", () => {
     const bCro = await request(b).get("/cro");
     expect(bCro.body.recommendations.filter((r: { siteUrl: string }) => r.siteUrl === SITE_A)).toEqual([]);
   }, 120_000);
+});
+
+
+describe("Behavioral AI : identifiant de session unique par organisation", () => {
+  const SITE_B = `https://site-b-${SUFFIX}.example.test`;
+  const SHARED_SID = `fp_shared_${SUFFIX}`;
+
+  async function provision(app: express.Express, siteUrl: string): Promise<string> {
+    const r = await request(app).get("/behavioral/snippet").query({ siteUrl });
+    return /\)\(window,document,'[^']+','[^']+','([0-9a-f]{64})'\)/.exec(r.body.snippet)![1]!;
+  }
+
+  it("migration : ancienne cle PRIMARY KEY (id) convertie en (org_id, id) sans perte, idempotente", async () => {
+    if (!dbOk) return;
+    const dup = await pool.query("SELECT count(*)::int - count(DISTINCT id)::int AS d FROM behavior_sessions");
+    if (dup.rows[0].d > 0) return; // base partagee deja composite avec des ids communs : rien a rejouer
+    const legacyId = `legacy_${SUFFIX}`;
+    await pool.query("DELETE FROM behavior_sessions WHERE org_id = ANY($1)", [[ORG_A, ORG_B]]);
+    const pkName = (await pool.query("SELECT conname FROM pg_constraint WHERE conrelid='public.behavior_sessions'::regclass AND contype='p'")).rows[0].conname;
+    await pool.query(`ALTER TABLE behavior_sessions DROP CONSTRAINT "${pkName}"`);
+    await pool.query("ALTER TABLE behavior_sessions ADD PRIMARY KEY (id)");
+    await pool.query("INSERT INTO behavior_sessions (id, org_id, site_url, device_type) VALUES ($1,$2,$3,'mobile')", [legacyId, ORG_A, SITE_A]);
+
+    await initBehavioralCroTables();
+    await initBehavioralCroTables(); // idempotent
+
+    const cols = await pool.query(`SELECT array_agg(a.attname::text ORDER BY k.ord) AS cols
+      FROM pg_constraint c CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY k(attnum, ord)
+      JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum
+      WHERE c.conrelid='public.behavior_sessions'::regclass AND c.contype='p'`);
+    expect(cols.rows[0].cols).toEqual(["org_id", "id"]);
+    const kept = await pool.query("SELECT device_type FROM behavior_sessions WHERE id=$1 AND org_id=$2", [legacyId, ORG_A]);
+    expect(kept.rows).toEqual([{ device_type: "mobile" }]);
+    await pool.query("INSERT INTO behavior_sessions (id, org_id, site_url) VALUES ($1,$2,$3)", [legacyId, ORG_B, SITE_B]);
+    await pool.query("DELETE FROM behavior_sessions WHERE id=$1", [legacyId]);
+  }, 60_000);
+
+  it("deux organisations avec le meme id de session client : deux lignes, aucune perte, compteurs isoles", async () => {
+    if (!dbOk) return;
+    const a = appFor(ORG_A), b = appFor(ORG_B);
+    const plainA = await provision(a, SITE_A);
+    const plainB = await provision(b, SITE_B);
+    const tokA = (await exchange(a, SITE_A, plainA)).body.sessionToken as string;
+    const tokB = (await exchange(b, SITE_B, plainB)).body.sessionToken as string;
+    const sess = (app: express.Express, site: string, tok: string, ua: string) =>
+      request(app).post("/behavioral/session").set(browserHeaders(site))
+        .send({ id: SHARED_SID, siteUrl: site, sessionToken: tok, ts: Date.now(), nonce: nonce(), deviceType: ua });
+    expect((await sess(a, SITE_A, tokA, "mobile")).status).toBe(201);
+    expect((await sess(b, SITE_B, tokB, "desktop")).status).toBe(201);
+    // Rejeu par la meme organisation : idempotent (pas de doublon, pas d'erreur).
+    expect((await sess(a, SITE_A, tokA, "mobile")).status).toBe(201);
+
+    const rows = await pool.query("SELECT org_id, device_type, site_url FROM behavior_sessions WHERE id=$1 ORDER BY org_id", [SHARED_SID]);
+    expect(rows.rows).toEqual([
+      { org_id: ORG_A, device_type: "mobile", site_url: SITE_A },
+      { org_id: ORG_B, device_type: "desktop", site_url: SITE_B },
+    ]);
+
+    // Un rage_click de A n'incremente que la session de A.
+    const ev = await request(a).post("/behavioral/event").set(browserHeaders(SITE_A))
+      .send({ sessionId: SHARED_SID, siteUrl: SITE_A, page: "/", eventType: "rage_click", sessionToken: tokA, ts: Date.now(), nonce: nonce() });
+    expect(ev.status).toBe(201);
+    const rc = await pool.query("SELECT org_id, rage_clicks FROM behavior_sessions WHERE id=$1 ORDER BY org_id", [SHARED_SID]);
+    expect(rc.rows).toEqual([{ org_id: ORG_A, rage_clicks: 1 }, { org_id: ORG_B, rage_clicks: 0 }]);
+  }, 60_000);
 });

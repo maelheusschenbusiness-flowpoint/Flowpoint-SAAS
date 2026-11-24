@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
-  pgTable, text, integer, boolean, timestamp, real, bigint, jsonb,
+  pgTable, text, integer, boolean, timestamp, real, bigint, jsonb, primaryKey,
 } from "drizzle-orm/pg-core";
 
 // ── Connection ────────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ export const behaviorEventsTable = pgTable("behavior_events", {
 });
 
 export const behaviorSessionsTable = pgTable("behavior_sessions", {
-  id:              text("id").primaryKey(),
+  id:              text("id").notNull(),
   orgId:           text("org_id").notNull().default("default"),
   siteUrl:         text("site_url").notNull(),
   userAgent:       text("user_agent"),
@@ -284,7 +284,7 @@ export const behaviorSessionsTable = pgTable("behavior_sessions", {
   exitPage:        text("exit_page"),
   startedAt:       timestamp("started_at"),
   endedAt:         timestamp("ended_at"),
-});
+}, (t) => [primaryKey({ columns: [t.orgId, t.id] })]);
 
 export const behaviorInsightsTable = pgTable("behavior_insights", {
   id:             text("id").primaryKey(),
