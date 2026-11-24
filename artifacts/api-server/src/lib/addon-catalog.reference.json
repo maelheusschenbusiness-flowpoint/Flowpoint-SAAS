@@ -996,46 +996,46 @@
     "description": "Cartes réellement affichées dans Billing > Add-ons (dashboard.js, liste allAddons). Une carte par add-on listé ; les add-ons « garde prix » (lot 1) n'apparaissent que si le catalogue serveur les publie. États par plan : included = inclus au plan et non coming soon ; soon = coming soon (bouton « Bientôt », jamais « Activer ») ; enable = bouton « Activer » (statut available/beta, plan autorisé à l'acheter, non inclus) ; planUnavailable = bouton désactivé « Non disponible avec votre forfait ». Rendu réel vérifié avec Playwright le 2026-11-24 (catalogue /api/plans/catalog réel).",
     "expectedCards": {
       "priceGateClosed": 36,
-      "priceGateOpen": 40
+      "priceGateOpen": 44
     },
     "expectedByPlan": {
       "priceGateOpen": {
         "standard": {
           "included": 1,
-          "soon": 15,
-          "enable": 12,
-          "planUnavailable": 12
+          "soon": 12,
+          "enable": 15,
+          "planUnavailable": 16
         },
         "pro": {
           "included": 6,
-          "soon": 15,
-          "enable": 18,
+          "soon": 12,
+          "enable": 25,
           "planUnavailable": 1
         },
         "ultra": {
           "included": 9,
-          "soon": 15,
-          "enable": 16,
+          "soon": 12,
+          "enable": 23,
           "planUnavailable": 0
         }
       },
       "priceGateClosed": {
         "standard": {
           "included": 1,
-          "soon": 15,
+          "soon": 12,
           "enable": 8,
-          "planUnavailable": 12
+          "planUnavailable": 15
         },
         "pro": {
           "included": 6,
-          "soon": 15,
-          "enable": 14,
+          "soon": 12,
+          "enable": 17,
           "planUnavailable": 1
         },
         "ultra": {
           "included": 9,
-          "soon": 15,
-          "enable": 12,
+          "soon": 12,
+          "enable": 15,
           "planUnavailable": 0
         }
       }
@@ -1046,11 +1046,7 @@
       "aiCreditsPack500k": "Packs de crédits IA (paiement unique) : achetés via le flux crédits IA (fpBuyAICredits -> pricing.html), pas via la grille Add-ons."
     },
     "notCardsBecauseNotInBranch": [
-      "seoContentDecayRadar",
-      "agencyPortfolioPriorities",
-      "gbpPerformanceLeads",
-      "localLandingOpportunities",
-      "localPresenceOptimizer"
+      "seoContentDecayRadar"
     ]
   }
 }
