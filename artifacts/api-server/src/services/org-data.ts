@@ -59,6 +59,8 @@ export interface OrgBillingData {
    * Never set for real customer orgs; billing-context.ts checks orgId AND this flag.
    */
   isInternalQa: boolean;
+  /** ISO de création de l'organisation (droits historiques préservés, cf. getIncludedAddonsForOrg). */
+  createdAt?: string | null;
 }
 
 export type PersistOrgFields = {
@@ -106,11 +108,12 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
         owner_first_name: string | null;
         name: string | null;
         is_internal_qa: boolean;
+        created_at: string | Date | null;
       }>(
         `SELECT plan, subscription_status, stripe_customer_id, stripe_subscription_id,
                 trial_ends_at, trial_consumed_at, trial_started_at,
                 addons, pending_plan, pending_plan_date,
-                owner_email, owner_first_name, name, is_internal_qa
+                owner_email, owner_first_name, name, is_internal_qa, created_at
          FROM organizations WHERE id = $1 LIMIT 1`,
         [orgId],
       );
@@ -183,6 +186,7 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
           firstName:            row.owner_first_name ?? null,
           orgName:              row.name ?? null,
           isInternalQa:         row.is_internal_qa === true,
+          createdAt:            row.created_at ? new Date(row.created_at).toISOString() : null,
         };
       }
     } finally {
@@ -215,6 +219,8 @@ export async function loadOrgData(orgId: string): Promise<OrgBillingData | null>
       orgName:              legacy.orgName ?? null,
       // Legacy org_settings path never sets is_internal_qa — QA org is UUID-only.
       isInternalQa:         false,
+      // Compte legacy antérieur à la table organizations : droits historiques préservés.
+      createdAt:            "1970-01-01T00:00:00.000Z",
     };
   } catch (legacyErr) {
     logger.error({ legacyErr, orgId }, "[OrgData] Both organizations and org_settings failed");

@@ -556,10 +556,50 @@ export const PLAN_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
     // aiForecasting: BETA + included in Ultra → same "🧪 Beta — Inclus" rendering
     "aiForecasting",
     "enterprisePermissions",
+    // Matrice officielle (billing-addon-included-matrix) : Ultra hérite des six inclusions
+    // Pro (dont retention90d) + quatre propres (customDomain, behavioralAI, aiForecasting,
+    // retention365d) = 10. keywordDomination n'est PAS inclus : achat séparé Pro/Ultra.
+    "retention90d",
     "retention365d",
-    "keywordDomination",
   ]),
 };
+
+/**
+ * Droits historiques préservés (grandfathering).
+ *
+ * Avant l'alignement sur la matrice officielle, Ultra incluait keywordDomination.
+ * Les organisations créées AVANT GRANDFATHER_CUTOFF_ISO conservent ce droit (jamais
+ * retiré à un abonné existant) ; les organisations créées après suivent la matrice.
+ * Source unique : tout consommateur d'inclusion par organisation passe par
+ * getIncludedAddonsForOrg().
+ */
+export const GRANDFATHER_CUTOFF_ISO = "2026-11-25T00:00:00.000Z";
+export const GRANDFATHERED_INCLUDED_ADDONS: Record<string, ReadonlySet<string>> = {
+  ultra: new Set<string>(["keywordDomination"]),
+};
+
+/** Vrai quand l'organisation (date de création) existait avant la bascule de matrice. */
+export function isGrandfatheredOrg(orgCreatedAt: Date | string | null | undefined): boolean {
+  if (!orgCreatedAt) return false;
+  const t = orgCreatedAt instanceof Date ? orgCreatedAt.getTime() : Date.parse(String(orgCreatedAt));
+  return Number.isFinite(t) && t < Date.parse(GRANDFATHER_CUTOFF_ISO);
+}
+
+/**
+ * Add-ons inclus pour une organisation : inclusions du plan + droits historiques
+ * préservés pour les organisations antérieures à la bascule. Sans date de création
+ * (inconnue), seule la matrice courante s'applique.
+ */
+export function getIncludedAddonsForOrg(
+  plan: string,
+  orgCreatedAt?: Date | string | null,
+): ReadonlySet<string> {
+  const planKey = plan.toLowerCase();
+  const base = PLAN_INCLUDED_ADDONS[planKey] ?? new Set<string>();
+  const legacy = GRANDFATHERED_INCLUDED_ADDONS[planKey];
+  if (!legacy || !isGrandfatheredOrg(orgCreatedAt)) return base;
+  return new Set<string>([...base, ...legacy]);
+}
 
 /**
  * PLAN_ALLOWED_ADDONS — which add-ons can be PURCHASED (paid) per plan tier.

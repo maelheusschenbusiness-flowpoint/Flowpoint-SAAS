@@ -71,6 +71,8 @@ export default defineConfig({
       "src/lib/plans.test.ts",
       // Catalogue d'add-ons : test bloquant contre addon-catalog.reference.json
       "src/lib/addon-catalog-reference.test.ts",
+      // Droits acquis : keywordDomination Ultra conserve pour les organisations anterieures a la matrice
+      "src/lib/addon-grandfathering.test.ts",
       // Lot 1 add-ons : garde prix LIVE (add-on invisible et non achetable sans variable de prix)
       "src/lib/addon-price-gate.test.ts",
       "src/lib/addon-test-price-overrides.test.ts",
