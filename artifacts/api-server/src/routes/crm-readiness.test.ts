@@ -52,6 +52,26 @@ describe("CRM routes for providers without an implemented adapter", () => {
     vi.clearAllMocks();
   });
 
+  it("GET /crm/providers is the source of truth: only providers with an adapter are `implemented`", async () => {
+    const response = await request(makeApp()).get("/api/crm/providers");
+
+    expect(response.status).toBe(200);
+    const byId = Object.fromEntries(response.body.providers.map((p: { id: string }) => [p.id, p]));
+    expect(byId["hubspot"]).toMatchObject({ implemented: true });
+    expect(byId["salesforce"]).toMatchObject({ implemented: false, available: false });
+  });
+
+  it("every provider flagged implemented:false answers 501 on connect/sync/test (UI never offers them)", async () => {
+    const list = await request(makeApp()).get("/api/crm/providers");
+    const notImplemented = list.body.providers.filter((p: { implemented: boolean }) => !p.implemented);
+    expect(notImplemented.length).toBeGreaterThan(0);
+    for (const p of notImplemented) {
+      expect((await request(makeApp()).post(`/api/crm/connect/${p.id}`).send({})).status).toBe(501);
+      expect((await request(makeApp()).post("/api/crm/sync").send({ provider: p.id })).status).toBe(501);
+      expect((await request(makeApp()).post("/api/crm/test").send({ provider: p.id })).status).toBe(501);
+    }
+  });
+
   it("does not accept or persist a raw token as a connected provider", async () => {
     const response = await request(makeApp())
       .post("/api/crm/connect/salesforce")
