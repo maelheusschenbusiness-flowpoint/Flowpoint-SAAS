@@ -175,6 +175,47 @@ export async function discoverAndStoreSites(orgId: string): Promise<number> {
   }
 }
 
+type GscRow = { keys: [string, string]; clicks: number; impressions: number; ctr: number; position: number };
+
+// Search Analytics returns rows ordered by clicks and capped by rowLimit. A single request of
+// 1000 rows silently dropped every zero-click / low-click row of a real property (exactly the
+// "impressions but few clicks" queries the Local Landing add-on looks for) and truncated the
+// per-page clicks used by Agency Portfolio. Page through the result, bounded for safety.
+const GSC_PAGE_SIZE = 5000;
+const GSC_MAX_ROWS = 15000;
+
+export async function fetchSearchAnalyticsRows(
+  token: string,
+  siteUrl: string,
+  startDate: string,
+  endDate: string,
+  dimension: "query" | "page",
+): Promise<{ ok: true; rows: GscRow[] } | { ok: false; status: number }> {
+  const all: GscRow[] = [];
+  for (let startRow = 0; startRow < GSC_MAX_ROWS; startRow += GSC_PAGE_SIZE) {
+    const res = await fetch(
+      `${GSC_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDate, endDate,
+          dimensions: [dimension, "date"],
+          rowLimit:   GSC_PAGE_SIZE,
+          startRow,
+        }),
+        signal: AbortSignal.timeout(25_000),
+      },
+    );
+    if (!res.ok) return startRow === 0 ? { ok: false, status: res.status } : { ok: true, rows: all };
+    const data = await res.json() as { rows?: GscRow[] };
+    const batch = data.rows ?? [];
+    all.push(...batch);
+    if (batch.length < GSC_PAGE_SIZE) break;
+  }
+  return { ok: true, rows: all };
+}
+
 // ── Sync (write to gsc_keyword_data) ─────────────────────────────────────────
 
 export async function syncGSCData(orgId: string): Promise<number> {
@@ -189,52 +230,17 @@ export async function syncGSCData(orgId: string): Promise<number> {
   const startDate = new Date(Date.now() - 28 * 86400 * 1000).toISOString().slice(0, 10);
 
   try {
-    const res = await fetch(
-      `${GSC_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
-      {
-        method:  "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startDate, endDate,
-          dimensions: ["query", "date"],
-          rowLimit:   1000,
-          startRow:   0,
-        }),
-        signal: AbortSignal.timeout(25_000),
-      }
-    );
-
-    if (!res.ok) {
-      logger.warn({ status: res.status, orgId, siteUrl }, "[gsc] searchAnalytics query failed");
+    const query = await fetchSearchAnalyticsRows(token, siteUrl, startDate, endDate, "query");
+    if (!query.ok) {
+      logger.warn({ status: query.status, orgId, siteUrl }, "[gsc] searchAnalytics query failed");
       return 0;
     }
-
-    const data = await res.json() as {
-      rows?: Array<{ keys: [string, string]; clicks: number; impressions: number; ctr: number; position: number }>;
-    };
-
-    const rows = data.rows ?? [];
+    const rows = query.rows;
     if (rows.length === 0) return 0;
 
-    // Fetch page-level data in the same sync
-    const pageRes = await fetch(
-      `${GSC_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
-      {
-        method:  "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startDate, endDate,
-          dimensions: ["page", "date"],
-          rowLimit:   1000,
-          startRow:   0,
-        }),
-        signal: AbortSignal.timeout(25_000),
-      }
-    );
-    const pageData = pageRes.ok
-      ? await pageRes.json() as { rows?: Array<{ keys: [string, string]; clicks: number; impressions: number; ctr: number; position: number }> }
-      : { rows: [] };
-    const pageRows = pageData.rows ?? [];
+    // Page-level data in the same sync (best effort: a failure leaves gsc_page_data untouched)
+    const pageResult = await fetchSearchAnalyticsRows(token, siteUrl, startDate, endDate, "page");
+    const pageRows = pageResult.ok ? pageResult.rows : [];
 
     const client = await pool.connect();
     try {

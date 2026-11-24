@@ -2211,6 +2211,27 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS gsc_keyword_data_org_idx ON gsc_keyword_data(org_id)`);
     await applyTenantRls("gsc_keyword_data");
 
+    // ── gsc_page_data : meme situation que gsc_keyword_data (absente de la production, bloc v3
+    // deja enregistre). Lue par Agency Portfolio Priorities (clics GSC par page) et ecrite par
+    // gsc-service. Additif et idempotent ; schema identique a celui du bloc v3.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS gsc_page_data (
+        id          TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        org_id      TEXT        NOT NULL DEFAULT 'default',
+        page        TEXT        NOT NULL DEFAULT '',
+        date        TEXT        NOT NULL DEFAULT '',
+        impressions INTEGER     NOT NULL DEFAULT 0,
+        clicks      INTEGER     NOT NULL DEFAULT 0,
+        ctr         REAL        NOT NULL DEFAULT 0,
+        position    REAL        NOT NULL DEFAULT 0,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS gsc_page_data_org_page_date_idx ON gsc_page_data(org_id, page, date)`);
+    await run(client, `CREATE INDEX IF NOT EXISTS gsc_page_data_org_idx ON gsc_page_data(org_id)`);
+    await applyTenantRls("gsc_page_data");
+
     // ── Local Domination Maps : local_opportunities et local_visibility_scores ──
     // Lues par GET /api/local-maps/opportunities et /visibility-scores
     // (SELECT * ... WHERE org_id=$1 ORDER BY score DESC / created_at DESC) et listees dans
@@ -2309,6 +2330,48 @@ export async function initDataTables(): Promise<void> {
       )
     `);
     await applyTenantRls("conversion_opportunity_settings");
+
+    // ── Add-ons du lot 2 : tables additives et idempotentes (hors bloc v3, comme le lot 1) ──
+    // [lot2:agencyPortfolioPriorities]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS agency_portfolio_priority_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{"priorityWeights":{}}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS agency_portfolio_priority_settings_updated_idx ON agency_portfolio_priority_settings(updated_at)`);
+    await applyTenantRls("agency_portfolio_priority_settings");
+
+    // [lot2:localLandingOpportunities]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS local_landing_opportunity_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{"services":[],"locations":[],"minimumImpressions":10,"maximumPosition":30}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("local_landing_opportunity_settings");
+
+    // [lot2:localPresenceOptimizer]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS local_presence_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("local_presence_settings");
+
+    // [lot2:gbpPerformanceLeads]
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS gbp_performance_settings (
+        org_id TEXT PRIMARY KEY,
+        settings JSONB NOT NULL DEFAULT '{"locationId":null,"periodDays":30,"goals":{},"alertDropPercent":20}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await applyTenantRls("gbp_performance_settings");
 
     if (!await hasMigration("missing-production-tables-v3")) {
       // Supersede v1 and v2 (v2 had wrong schemas + FORCE RLS for raw-pool services)
@@ -3058,6 +3121,8 @@ export async function initDataTables(): Promise<void> {
       "gbp_posts","dataforseo_quota","roles","gsc_sites","reviews","crm_sync_logs",
       "automation_templates","local_heatmaps","login_audits","crm_integrations",
       "google_locations","org_auth_config","google_accounts","sso_providers","ga4_properties",
+      // Lot 2 : routes/gbp-performance.ts lit et ecrit gbp_performance_settings via pool.query() brut.
+      "gbp_performance_settings",
     ]) {
       await run(client, `ALTER TABLE "${_t}" ENABLE ROW LEVEL SECURITY`);
       await run(client, `ALTER TABLE "${_t}" NO FORCE ROW LEVEL SECURITY`);

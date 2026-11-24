@@ -13,6 +13,8 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/routes/billing-verify-plan-guard.test.ts",
+      // GBP : Business Information API, pagination, erreurs typees, mapping google_locations.
+      "src/services/google-service-gbp.test.ts",
       "src/tests/stripe-webhook-addon-checkout-guard.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
@@ -74,6 +76,8 @@ export default defineConfig({
       "src/lib/addon-test-price-overrides.test.ts",
       // gsc_keyword_data creee hors du bloc v3 (absente de la production)
       "src/services/gsc-keyword-data-schema-db.test.ts",
+      // gsc_page_data creee hors du bloc v3 (absente de la production)
+      "src/services/gsc-page-data-schema-db.test.ts",
       // Local Domination Maps : local_opportunities / local_visibility_scores (absentes)
       "src/services/local-maps-tables-db.test.ts",
       // [lot1:organicCampaignTracker]
@@ -95,6 +99,29 @@ export default defineConfig({
       "src/routes/conversion-opportunity-engine.test.ts",
       "src/services/conversion-opportunity-engine.test.ts",
       "src/lib/addon-conversion-opportunity-engine-gate.test.ts",
+      // Lot 2 add-ons : garde prix
+      "src/lib/addon-price-gate-lot2.test.ts",
+      // [lot2:agencyPortfolioPriorities]
+      "src/routes/agency-portfolio-priorities.test.ts",
+      "src/services/agency-portfolio-priorities.test.ts",
+      "src/lib/addon-agency-portfolio-priorities-gate.test.ts",
+
+      // [lot2:localLandingOpportunities]
+      "src/routes/local-landing-opportunities.test.ts",
+      "src/services/local-landing-opportunities.test.ts",
+      "src/lib/addon-local-landing-opportunities-gate.test.ts",
+
+      // [lot2:localPresenceOptimizer]
+      "src/routes/local-presence-optimizer.test.ts",
+      "src/services/local-presence-optimizer.test.ts",
+      "src/lib/addon-local-presence-optimizer-gate.test.ts",
+
+      // [lot2:gbpPerformanceLeads]
+      "src/routes/gbp-performance.test.ts",
+      "src/routes/gbp-performance-postgres.test.ts",
+      "src/services/gbp-performance-addon.test.ts",
+      "src/services/gbp-performance-api.test.ts",
+      "src/lib/addon-gbp-performance-leads-gate.test.ts",
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",
@@ -105,6 +132,7 @@ export default defineConfig({
       "src/routes/addon-activate-quantity.test.ts",
       "src/routes/gsc-site-ownership.test.ts",
       "src/services/gsc-sync-ownership.test.ts",
+      "src/services/gsc-search-analytics-pagination.test.ts",
       "src/services/ga4-property-discovery.test.ts",
       "src/routes/chat-notifications.test.ts",
       "src/routes/team-chat-reliability.test.ts",
