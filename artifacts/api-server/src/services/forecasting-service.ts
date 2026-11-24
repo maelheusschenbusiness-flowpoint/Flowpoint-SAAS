@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { stableId } from "../lib/stable-id.js";
 
 export interface ForecastData {
   siteUrl: string;
@@ -60,6 +61,7 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
       const res = await client.query(
         `SELECT * FROM seo_forecasts
          WHERE org_id=$1 AND site_url=$2 AND source='gsc'
+         AND forecast_date >= (NOW() AT TIME ZONE 'UTC')::date
          ORDER BY forecast_date ASC, scenario ASC LIMIT 270`,
         [orgId, url]
       );
@@ -72,16 +74,28 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
           confidence: Number(r["confidence"] ?? 75),
           scenario: String(r["scenario"] ?? "realistic") as ForecastPoint["scenario"],
         }));
-        const realistic = forecasts.filter(f => f.scenario === "realistic");
+        // Defence in depth: the read already floors forecast_date at the current UTC day,
+        // but a row left over from an earlier generation must never count as a first day.
+        const today = new Date().toISOString().slice(0, 10);
+        const upcoming = forecasts.filter(point => point.date.slice(0, 10) >= today);
+        if (upcoming.length === 0) {
+          return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
+        }
+        const realistic = upcoming.filter(f => f.scenario === "realistic");
         const in30 = realistic.slice(0, 30);
         const in90 = realistic.slice(0, 90);
         const realTraffic30  = in30.reduce((s, f) => s + f.predictedTraffic, 0);
         const realTraffic90  = in90.reduce((s, f) => s + f.predictedTraffic, 0);
-        const prev30 = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
-        const growthPct = prev30 > 0 ? Math.round(((realTraffic30 - prev30) / prev30) * 100) : 0;
+        // Days 31-60 are further in the future than days 1-30: growth is measured forwards,
+        // (days 31-60 - days 1-30) / days 1-30. Fewer than 60 days or a first month
+        // without traffic means no measurable growth (0), never NaN/Infinity.
+        const secondMonthTraffic = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
+        const growthPct = realistic.length >= 60 && realTraffic30 > 0
+          ? Math.round(((secondMonthTraffic - realTraffic30) / realTraffic30) * 100)
+          : 0;
         return {
           siteUrl: url,
-          forecasts,
+          forecasts: upcoming,
           available: realistic.length > 0,
           source: "stored",
           summary: {
@@ -102,6 +116,11 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
 
   // A forecast is a business decision aid: never fabricate one in any environment.
   return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
+}
+
+/** Fixed-length unique id of a forecast row (no truncation, no collision on long URLs). */
+export function forecastRowId(orgId: string, siteUrl: string, date: string, scenario: string): string {
+  return stableId("fc", orgId, siteUrl, date, scenario);
 }
 
 export async function generateForecasts(orgId: string, siteUrl: string): Promise<ForecastData> {
@@ -151,15 +170,28 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
           predictedConversions: 0, predictedRevenue: 0, confidence, scenario });
       }
     }
-    for (const f of forecasts) {
-      await client.query(
-        `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
-           VALUES ($1,$2,$3,$4,$5,0,0,$6,$7,'gsc',NOW())
-         ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
-           predicted_traffic=$5, predicted_conversions=0, predicted_revenue=0, confidence=$6, source='gsc', generated_at=NOW()`,
-        [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
-          orgId, siteUrl, f.date, f.predictedTraffic, f.confidence, f.scenario]
-      );
+    // All-or-nothing: 270 rows written in one transaction. The id is a fixed-length hash of
+    // the business key (org, site, date, scenario): the former truncated id collided on the
+    // primary key for long site URLs.
+    let txActive = false;
+    try {
+      await client.query("BEGIN");
+      txActive = true;
+      for (const f of forecasts) {
+        await client.query(
+          `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
+             VALUES ($1,$2,$3,$4,$5,0,0,$6,$7,'gsc',NOW())
+           ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
+             predicted_traffic=$5, predicted_conversions=0, predicted_revenue=0, confidence=$6, source='gsc', generated_at=NOW()`,
+          [forecastRowId(orgId, siteUrl, f.date, f.scenario),
+            orgId, siteUrl, f.date, f.predictedTraffic, f.confidence, f.scenario]
+        );
+      }
+      await client.query("COMMIT");
+      txActive = false;
+    } catch (error) {
+      if (txActive) await client.query("ROLLBACK").catch(() => {});
+      throw error;
     }
     const data = await getForecastData({ orgId, siteUrl });
     return { ...data, available: true, source: "gsc", reason: "Trafic projeté à partir des clics Google Search Console. Conversion et revenu nécessitent GA4." };

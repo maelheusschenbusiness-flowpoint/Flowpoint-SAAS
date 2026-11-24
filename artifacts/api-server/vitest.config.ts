@@ -107,6 +107,8 @@ export default defineConfig({
       "src/routes/addon-activate-quantity.test.ts",
       "src/routes/gsc-site-ownership.test.ts",
       "src/services/gsc-sync-ownership.test.ts",
+      // AI Forecasting — stored forecast summary (growth sign, stale rows; PR #496)
+      "src/services/forecasting-service.test.ts",
       "src/services/ga4-property-discovery.test.ts",
       "src/routes/chat-notifications.test.ts",
       "src/routes/team-chat-reliability.test.ts",
