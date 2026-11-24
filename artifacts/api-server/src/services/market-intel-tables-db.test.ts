@@ -60,11 +60,12 @@ describe("Market Intelligence : tables additives", () => {
     const today = new Date().toISOString().slice(0, 10);
     const old = new Date(Date.now() - 35 * 86400_000).toISOString().slice(0, 10);
     await pool.query(
-      `INSERT INTO gsc_keyword_data (org_id, keyword, date, impressions, clicks) VALUES
-         ($1,'seo local',$2,400,20),($1,'seo local',$3,300,10)`, [ORG_A, today, old]);
+      `INSERT INTO gsc_keyword_data (id, org_id, keyword, date, impressions, clicks) VALUES
+         ($4,$1,'seo local',$2,400,20),($5,$1,'seo local',$3,300,10)`, [ORG_A, today, old, `${ORG_A}_g1`, `${ORG_A}_g2`]);
     await pool.query(
-      `INSERT INTO competitor_rankings (org_id, competitor_domain, keyword, position, checked_at) VALUES
-         ($1,'rival.example','seo local',3, NOW()),($1,'rival.example','seo local',8, NOW() - INTERVAL '7 days')`, [ORG_A]);
+      `INSERT INTO competitor_rankings (id, org_id, competitor_domain, keyword, position, checked_at) VALUES
+         ($2,$1,'rival.example','seo local',3, NOW()),($3,$1,'rival.example','seo local',8, NOW() - INTERVAL '7 days')`,
+      [ORG_A, `${ORG_A}_r1`, `${ORG_A}_r2`]);
 
     const dash = await getMarketDashboard(ORG_A);
     expect(dash.trends[0]).toMatchObject({ keyword: "seo local", growth_rate: 100, trend_direction: "up" });
