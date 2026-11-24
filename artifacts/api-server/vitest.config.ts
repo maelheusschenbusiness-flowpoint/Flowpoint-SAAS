@@ -76,6 +76,11 @@ export default defineConfig({
       "src/services/gsc-keyword-data-schema-db.test.ts",
       // Local Domination Maps : local_opportunities / local_visibility_scores (absentes)
       "src/services/local-maps-tables-db.test.ts",
+      // CRM Integrations : OAuth HubSpot chiffre, synchronisation, webhooks, tables CRM
+      "src/services/crm-tables-db.test.ts",
+      "src/services/crm/crm-hubspot.test.ts",
+      "src/services/crm-service.test.ts",
+      "src/routes/crm-readiness.test.ts",
       // [lot1:organicCampaignTracker]
       "src/routes/organic-campaign-tracker.test.ts",
       "src/services/organic-campaign-tracker.test.ts",
