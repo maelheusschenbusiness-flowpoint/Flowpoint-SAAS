@@ -357,10 +357,7 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "gbpSlots10",
   // reviewIntelligence: Pro/Ultra ont deja la fonction par leur plan ; l'achat ne debloque rien de plus.
   "reviewIntelligence",
-  // localDominationMaps / zapierIntegration: hors commercialisation jusqu'a certification complete (Stripe TEST + fonctionnel).
-  // Les droits et abonnements existants restent reconnus ; retirer de ce set a la validation du proprietaire.
-  "localDominationMaps",
-  "zapierIntegration",
+  // localDominationMaps / zapierIntegration : remis en vente (Pro/Ultra, via _PRO_EXCLUSIVE) apres certification.
   // ── No requireAddon gate in any route ─────────────────────────────────────
   // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
   // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
@@ -385,6 +382,18 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
   // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
+
+  // ── Retrait temporaire : tables absentes en production (audit) ─────────────
+  // Aucun init-*.ts ne cree ces tables et migrations/*.sql ne s'executent pas en production.
+  // Les definitions, droits et abonnements existants restent reconnus ; recreer les tables puis retirer d'ici.
+  // aiGbpPosting : gbp_post_queue, gbp_media_assets (gbp-posts.ts).
+  "aiGbpPosting",
+  // marketIntelligence : ai_market_reports (market-intelligence.ts).
+  "marketIntelligence",
+  // aiCro / revenueLeak : behavior_site_tokens, cro_recommendations, behavior_events/sessions.
+  "aiCro",
+  "revenueLeak",
+  // crmIntegration (deja ci-dessus) : crm_tokens absente.
 
   // aiWorkspaceLaunch: ai-workspace-launch.ts routes exist (POST + GET /:sessionId)
   // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
@@ -427,7 +436,8 @@ export const COMING_SOON_ADDONS = new Set<string>([
  *                        d'une connexion OAuth GBP active (intégration externe). → BETA
  *
  *   zapierIntegration → integrations.ts:131/158 gate réelle. Dépend OAuth
- *                        Zapier/Make (connexion externe non bundlée). → BETA
+ *                        Zapier/Make (connexion externe non bundlée). Vendu Pro/Ultra,
+ *                        volontairement hors BETA_ADDONS.
  */
 export const BETA_ADDONS = new Set<string>([
   // Beta describes feature maturity, NOT commercial mode.
@@ -436,14 +446,10 @@ export const BETA_ADDONS = new Set<string>([
   // BETA_ADDONS ∩ PLAN_INCLUDED_ADDONS is a valid non-empty set by design.
   //
   // Dépendance snippet onsite
+  // behavioralAI : reste BETA (inclus Ultra) ; revenueLeak / aiCro : retires (COMING_SOON, tables absentes).
   "behavioralAI",
-  "revenueLeak",
-  "aiCro",
   // Couverture données partielle / DFS non complète
   "aiForecasting",
-  "marketIntelligence",
-  // Dépendance OAuth externe
-  "aiGbpPosting",
   // Route /seo/backlinks réelle + requireAddon gate. DFS backlink integration
   // partielle (endpoint live, couverture données limitée). Inclus Pro & Ultra.
   "backlinkIntelligence",
@@ -585,12 +591,14 @@ const _STANDARD_PURCHASABLE = new Set<string>([
 const _PRO_EXCLUSIVE = new Set<string>([
   // NOTE: COMING_SOON_ADDONS must never appear here — they are not purchasable.
   // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
-  //          crmIntegration, aiExecutiveReport, aiWorkflows, localDominationMaps,
-  //          zapierIntegration (all COMING_SOON)
+  //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
+  // localDominationMaps / zapierIntegration : remis en vente (Pro/Ultra), hors COMING_SOON.
   "keywordDomination",
-  "aiGbpPosting",
-  "aiCro", "behavioralAI", "revenueLeak",
-  "aiForecasting", "marketIntelligence",
+  "localDominationMaps",
+  // behavioralAI : achat Pro retire (tables behavior_* absentes en production) ; reste inclus Ultra.
+  // aiGbpPosting, aiCro, revenueLeak, marketIntelligence : COMING_SOON (tables absentes).
+  "zapierIntegration",
+  "aiForecasting",
   "enterprisePermissions",
 ]);
 
