@@ -13,6 +13,7 @@ import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
+import { initGbpPostingTables } from "./services/init-gbp-posting-tables.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
@@ -329,6 +330,10 @@ async function main() {
       .catch((err: unknown) => {
         logger.warn({ err }, "[startup] init-market-intel-tables step failed (non-fatal)");
       });
+    await runCriticalStartupStep("init-gbp-posting-tables", initGbpPostingTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-gbp-posting-tables step failed (non-fatal)");
+      });
 
     // P0-5 : initAiMigration was previously only run on the full path.
     // Add it here so ai_recommendations / ai_workspace_profiles etc. are always present.
@@ -367,6 +372,7 @@ async function main() {
     // and all core tables that init-missions/automation/monitors depend on.
     await runCriticalStartupStep("init-data-tables", initDataTables);
     await runCriticalStartupStep("init-market-intel-tables", initMarketIntelTables);
+    await runCriticalStartupStep("init-gbp-posting-tables", initGbpPostingTables).catch(() => {});
     await runCriticalStartupStep("init-missions",   initMissionsTables);
     await runCriticalStartupStep("init-automation", initAutomationTables);
     await runCriticalStartupStep("init-monitors",   initMonitorsTables);
@@ -424,6 +430,11 @@ async function main() {
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
+
+    // GBP Posting : publication des posts programmes echus (appel Google reel, jamais simule).
+    import("./services/gbp-posting-service.js")
+      .then(({ startGBPPostScheduler }) => startGBPPostScheduler())
+      .catch((err) => logger.warn({ err }, "[gbp-posting] scheduler not started"));
 
     // Durable recovery of AI usage writes that failed after provider consumption
     // (idempotent replays — survives restarts, unlike in-process timers).

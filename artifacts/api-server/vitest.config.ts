@@ -13,6 +13,14 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/routes/billing-verify-plan-guard.test.ts",
+      // AI GBP Posting : tables, publication reelle (jamais simulee), isolation, generation.
+      "src/services/gbp-posting-tables-db.test.ts",
+      "src/routes/gbp-posts.test.ts",
+      "src/routes/gbp-posts-org-isolation.test.ts",
+      "src/routes/gbp-posts-lifecycle-postgres.test.ts",
+      "src/services/gbp-posting-generation.test.ts",
+      "src/services/gbp-posting-publish.test.ts",
+      "src/services/gbp-publish-honesty.test.ts",
       "src/tests/stripe-webhook-addon-checkout-guard.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
