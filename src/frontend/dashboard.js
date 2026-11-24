@@ -19586,6 +19586,9 @@ function bindGlobalEvents() {
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    "Cette intégration CRM n’est pas encore disponible.": "This CRM integration is not available yet.",
+    "La liste des CRM disponibles est momentanément indisponible.": "The list of available CRMs is temporarily unavailable.",
+    "Indisponible pour le moment": "Unavailable for now",
     "&#128508; Domination territoriale — 2 zones dominées · 3 à conquérir": "&#128508; Territorial domination — 2 areas dominated · 3 to conquer",
     "&#8593; +1 ce mois · Score 74/100": "&#8593; +1 this month · Score 74/100",
     "' : 'Sur la base d'une estimation par défaut de": "' : 'Based on a default estimate of",
@@ -21463,6 +21466,9 @@ function bindGlobalEvents() {
   var FP_I18N = {
     en: FP_I18N_EN,
     es: {
+    "Cette intégration CRM n’est pas encore disponible.": "Esta integración de CRM aún no está disponible.",
+    "La liste des CRM disponibles est momentanément indisponible.": "La lista de CRM disponibles no está disponible temporalmente.",
+    "Indisponible pour le moment": "No disponible por ahora",
     "Sites critiques à corriger": "Sitios críticos a corregir",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Algunos sitios tienen una puntuación SEO inferior a 50/100. Corrige primero las etiquetas faltantes y la velocidad móvil.",
     "À prioriser": "A priorizar",
@@ -24424,6 +24430,9 @@ function bindGlobalEvents() {
     "Agressive": "Agresiva",
     },
     de: {
+    "Cette intégration CRM n’est pas encore disponible.": "Diese CRM-Integration ist noch nicht verfügbar.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Die Liste der verfügbaren CRMs ist vorübergehend nicht verfügbar.",
+    "Indisponible pour le moment": "Derzeit nicht verfügbar",
     "Sites critiques à corriger": "Kritische Websites zu beheben",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Einige Websites haben einen SEO-Score unter 50/100. Beheben Sie zuerst fehlende Tags und die mobile Geschwindigkeit.",
     "À prioriser": "Zu priorisieren",
@@ -27358,6 +27367,9 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiv",
     },
     it: {
+    "Cette intégration CRM n’est pas encore disponible.": "Questa integrazione CRM non è ancora disponibile.",
+    "La liste des CRM disponibles est momentanément indisponible.": "L’elenco dei CRM disponibili è temporaneamente non disponibile.",
+    "Indisponible pour le moment": "Al momento non disponibile",
     "Sites critiques à corriger": "Siti critici da correggere",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Alcuni siti hanno un punteggio SEO inferiore a 50/100. Correggi prima i tag mancanti e la velocità mobile.",
     "À prioriser": "Da prioritizzare",
@@ -30311,6 +30323,9 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiva",
     },
     pt: {
+    "Cette intégration CRM n’est pas encore disponible.": "Esta integração de CRM ainda não está disponível.",
+    "La liste des CRM disponibles est momentanément indisponible.": "A lista de CRMs disponíveis está temporariamente indisponível.",
+    "Indisponible pour le moment": "Indisponível por enquanto",
     "Sites critiques à corriger": "Sites críticos a corrigir",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Alguns sites têm uma pontuação SEO inferior a 50/100. Corrija primeiro as tags em falta e a velocidade móvel.",
     "À prioriser": "A priorizar",
@@ -33245,6 +33260,9 @@ function bindGlobalEvents() {
     "Agressive": "Agressiva",
     },
     nl: {
+    "Cette intégration CRM n’est pas encore disponible.": "Deze CRM-integratie is nog niet beschikbaar.",
+    "La liste des CRM disponibles est momentanément indisponible.": "De lijst met beschikbare CRM’s is tijdelijk niet beschikbaar.",
+    "Indisponible pour le moment": "Momenteel niet beschikbaar",
     "Sites critiques à corriger": "Kritieke sites om te herstellen",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Sommige sites hebben een SEO-score onder 50/100. Herstel eerst ontbrekende tags en mobiele snelheid.",
     "À prioriser": "Te prioriteren",
@@ -36179,6 +36197,9 @@ function bindGlobalEvents() {
     "Agressive": "Agressief",
     },
     pl: {
+    "Cette intégration CRM n’est pas encore disponible.": "Ta integracja CRM nie jest jeszcze dostępna.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Lista dostępnych systemów CRM jest tymczasowo niedostępna.",
+    "Indisponible pour le moment": "Chwilowo niedostępne",
     "Sites critiques à corriger": "Krytyczne witryny do naprawy",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Niektóre witryny mają wynik SEO poniżej 50/100. Najpierw popraw brakujące tagi i szybkość mobilną.",
     "À prioriser": "Do priorytetyzacji",
@@ -39113,6 +39134,9 @@ function bindGlobalEvents() {
     "Agressive": "Agresywny",
     },
     sv: {
+    "Cette intégration CRM n’est pas encore disponible.": "Den här CRM-integrationen är inte tillgänglig ännu.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Listan över tillgängliga CRM är tillfälligt otillgänglig.",
+    "Indisponible pour le moment": "Inte tillgänglig just nu",
     "Sites critiques à corriger": "Kritiska webbplatser att åtgärda",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Vissa webbplatser har ett SEO-betyg under 50/100. Åtgärda saknade taggar och mobil hastighet först.",
     "À prioriser": "Att prioritera",
@@ -42047,6 +42071,9 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiv",
     },
     ro: {
+    "Cette intégration CRM n’est pas encore disponible.": "Această integrare CRM nu este încă disponibilă.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Lista CRM-urilor disponibile este temporar indisponibilă.",
+    "Indisponible pour le moment": "Indisponibil momentan",
     "Sites critiques à corriger": "Site-uri critice de corectat",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Unele site-uri au un scor SEO sub 50/100. Corectați mai întâi etichetele lipsă și viteza pe mobil.",
     "À prioriser": "De prioritizat",
@@ -44981,6 +45008,9 @@ function bindGlobalEvents() {
     "Agressive": "Agresiv",
     },
     cs: {
+    "Cette intégration CRM n’est pas encore disponible.": "Tato integrace CRM zatím není k dispozici.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Seznam dostupných CRM je dočasně nedostupný.",
+    "Indisponible pour le moment": "Momentálně nedostupné",
     "Sites critiques à corriger": "Kritické weby k opravě",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Některé weby mají SEO skóre pod 50/100. Nejprve opravte chybějící tagy a mobilní rychlost.",
     "À prioriser": "K prioritizaci",
@@ -69946,25 +69976,35 @@ window.FP_CRM_API = {
           setTimeout(() => { if (typeof showToast === 'function') showToast(ok ? 'success' : 'error', fpT(ok ? 'CRM connecté !' : 'La connexion au CRM a échoué ou a été refusée.')); }, 500);
         }
       } catch (_) { /* affichage seulement */ }
-      const [status, logs] = await Promise.allSettled([
+      const [status, logs, providers] = await Promise.allSettled([
         apiFetch('/api/crm/status').catch(()=>null),
         apiFetch('/api/crm/logs?limit=20').catch(()=>null),
+        apiFetch('/api/crm/providers').catch(()=>null),
       ]);
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.crm = {
         status: status.status==='fulfilled' ? status.value : {},
         logs:   logs.status==='fulfilled' ? (logs.value?.logs||[]) : [],
+        // Source de verite : GET /api/crm/providers (champ `implemented`). null = liste indisponible => tout est desactive.
+        providers: providers.status==='fulfilled' && Array.isArray(providers.value?.providers) ? providers.value.providers : null,
         loadedAt: Date.now(),
       };
     } catch(e) { console.warn('[FP_CRM_API]', e); }
   },
+  // Un fournisseur est connectable/synchronisable uniquement si le serveur le declare `implemented`.
+  isImplemented(provider) {
+    const list = window.FP_DATA?.crm?.providers;
+    return Array.isArray(list) && list.some((p) => p && p.id === provider && p.implemented === true);
+  },
   async connect(provider, data) {
+    if (!this.isImplemented(provider)) throw new Error('CRM_PROVIDER_NOT_IMPLEMENTED');
     return await apiFetch(`/api/crm/connect/${provider}`, { method:'POST', body: JSON.stringify(data) });
   },
   async disconnect(provider) {
     return await apiFetch(`/api/crm/disconnect/${provider}`, { method:'POST', body: JSON.stringify({}) });
   },
   async sync(provider, entityType) {
+    if (!this.isImplemented(provider)) throw new Error('CRM_PROVIDER_NOT_IMPLEMENTED');
     return await apiFetch('/api/crm/sync', { method:'POST', body: JSON.stringify({ provider, entityType }) });
   },
 };
@@ -70081,7 +70121,9 @@ function renderCRM() {
     { id:'close',      name:'Close CRM',   icon:'🔑', color:'#7b68ee', desc:'CRM conçu pour les équipes sales. Calling intégré.' },
   ];
 
-  const syncEntities = ['contacts','leads','deals','companies'];
+  // Le serveur ne synchronise que les contacts (autres entites => refus).
+  const syncEntities = ['contacts'];
+  const crmImpl = (id) => window.FP_CRM_API?.isImplemented(id) === true;
 
   return `
     <div class="fp-section-header">
@@ -70138,7 +70180,9 @@ function renderCRM() {
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_CRM_API?.disconnect('${p.id}').then(()=>{window.FP_CRM_API.load();render(STATE.currentSection)})">✕</button>
                 </div>
               ` : `
-                <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:11px" onclick="window._connectCrm('${p.id}','${p.name}','${p.icon}')">+ Connecter</button>
+                ${crmImpl(p.id)
+                  ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:11px" onclick="window._connectCrm('${p.id}','${p.name}','${p.icon}')">+ Connecter</button>`
+                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-crm-soon="${p.id}" disabled aria-disabled="true" style="width:100%;font-size:11px;opacity:0.6;cursor:not-allowed" title="${escHtml(fpT(crmData.providers ? 'Cette intégration CRM n’est pas encore disponible.' : 'La liste des CRM disponibles est momentanément indisponible.'))}">${escHtml(fpT(crmData.providers ? 'Bientôt disponible' : 'Indisponible pour le moment'))}</button>`}
               `}
             </div>
           `;
@@ -70233,6 +70277,7 @@ function renderCRM() {
     window._crmTab = window._crmTab || 'overview';
     window._currentCrmProvider = null;
     window._connectCrm = function(id, name, icon) {
+      if (!window.FP_CRM_API || !window.FP_CRM_API.isImplemented(id)) return; // jamais d'appel vers un CRM non implemente (501)
       window._currentCrmProvider = id;
       document.getElementById('fp-crm-modal-title').textContent = icon + ' Connecter ' + name;
       document.getElementById('fp-crm-modal').style.display = 'flex';
