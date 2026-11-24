@@ -357,10 +357,7 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "gbpSlots10",
   // reviewIntelligence: Pro/Ultra ont deja la fonction par leur plan ; l'achat ne debloque rien de plus.
   "reviewIntelligence",
-  // localDominationMaps / zapierIntegration: hors commercialisation jusqu'a certification complete (Stripe TEST + fonctionnel).
-  // Les droits et abonnements existants restent reconnus ; retirer de ce set a la validation du proprietaire.
-  "localDominationMaps",
-  "zapierIntegration",
+  // localDominationMaps / zapierIntegration : remis en vente (Pro/Ultra, via _PRO_EXCLUSIVE) apres certification.
   // ── No requireAddon gate in any route ─────────────────────────────────────
   // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
   // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
@@ -427,7 +424,8 @@ export const COMING_SOON_ADDONS = new Set<string>([
  *                        d'une connexion OAuth GBP active (intégration externe). → BETA
  *
  *   zapierIntegration → integrations.ts:131/158 gate réelle. Dépend OAuth
- *                        Zapier/Make (connexion externe non bundlée). → BETA
+ *                        Zapier/Make (connexion externe non bundlée). Vendu Pro/Ultra,
+ *                        volontairement hors BETA_ADDONS.
  */
 export const BETA_ADDONS = new Set<string>([
   // Beta describes feature maturity, NOT commercial mode.
@@ -585,11 +583,12 @@ const _STANDARD_PURCHASABLE = new Set<string>([
 const _PRO_EXCLUSIVE = new Set<string>([
   // NOTE: COMING_SOON_ADDONS must never appear here — they are not purchasable.
   // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
-  //          crmIntegration, aiExecutiveReport, aiWorkflows, localDominationMaps,
-  //          zapierIntegration (all COMING_SOON)
+  //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
+  // localDominationMaps / zapierIntegration : remis en vente (Pro/Ultra), hors COMING_SOON.
   "keywordDomination",
-  "aiGbpPosting",
+  "aiGbpPosting", "localDominationMaps",
   "aiCro", "behavioralAI", "revenueLeak",
+  "zapierIntegration",
   "aiForecasting", "marketIntelligence",
   "enterprisePermissions",
 ]);
