@@ -1,4 +1,4 @@
-import { getValidToken } from "./google-service.js";
+import { getValidToken, googleApiErrorFromResponse } from "./google-service.js";
 import { GBP_PERFORMANCE_METRICS } from "./gbp-performance-addon.js";
 
 /**
@@ -35,7 +35,7 @@ export async function getGbpPerformanceSeries(
     signal: AbortSignal.timeout(12_000),
   });
   if (!res.ok) {
-    throw new Error(`Google Business Profile Performance API returned HTTP ${res.status}`);
+    throw await googleApiErrorFromResponse(res, "businessprofileperformance:fetchMultiDailyMetricsTimeSeries");
   }
   const data = await res.json() as {
     multiDailyMetricTimeSeries?: Array<{

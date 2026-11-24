@@ -13,6 +13,8 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/routes/billing-verify-plan-guard.test.ts",
+      // GBP : Business Information API, pagination, erreurs typees, mapping google_locations.
+      "src/services/google-service-gbp.test.ts",
       "src/tests/stripe-webhook-addon-checkout-guard.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",

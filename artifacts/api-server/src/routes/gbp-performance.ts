@@ -124,6 +124,13 @@ router.get("/gbp-performance", async (req, res) => {
       drops,
     });
   } catch (error) {
+    if (error instanceof Error && error.name === "GoogleApiError") {
+      // Real Google reason (API not enabled, quota 0, scope...) so the UI can say why; no secret in it.
+      // Duck-typed (name) so this route does not need the class from google-service.
+      const g = error as Error & { code?: string; status?: number; reason?: string };
+      res.status(502).json({ ok: false, error: g.message, code: g.code, googleStatus: g.status, reason: g.reason });
+      return;
+    }
     res.status(502).json({ ok: false, error: safeErrMsg(error) });
   }
 });
