@@ -95,6 +95,18 @@ export default defineConfig({
       "src/services/crm/crm-hubspot.test.ts",
       "src/services/crm-service.test.ts",
       "src/routes/crm-readiness.test.ts",
+      // Behavioral AI / AI CRO / Revenue Leak : tables, ingestion par jeton de site, analyses
+      "src/routes/behavioral-chain-db.test.ts",
+      "src/tests/revenue-leak-attribution-ui.test.ts",
+      "src/routes/behavioral-snippet.test.ts",
+      "src/routes/cro-recommendation-state.test.ts",
+      "src/routes/revenue-leak-ga4.test.ts",
+      "src/routes/revenue-leak-ownership.test.ts",
+      "src/services/behavioral-service.test.ts",
+      "src/services/behavioral-session-id.test.ts",
+      "src/services/conversion-observations.test.ts",
+      "src/services/cro-service.test.ts",
+      "src/services/revenue-leak-attribution.test.ts",
       // [lot1:organicCampaignTracker]
       "src/routes/organic-campaign-tracker.test.ts",
       "src/services/organic-campaign-tracker.test.ts",

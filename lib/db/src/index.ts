@@ -325,6 +325,7 @@ export const croRecommendationsTable = pgTable("cro_recommendations", {
   source:          text("source").default("rules"),
   metadata:        jsonb("metadata").default({}),
   createdAt:       timestamp("created_at").defaultNow(),
+  updatedAt:       timestamp("updated_at").defaultNow(),
 });
 
 export const croScoresTable = pgTable("cro_scores", {
