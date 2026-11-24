@@ -77,6 +77,8 @@ export default defineConfig({
       "src/services/ensure-stripe-customer.test.ts",
       "src/agent/ai-tool-gate.test.ts",
       "src/lib/plans.test.ts",
+      // Catalogue d'add-ons : test bloquant contre addon-catalog.reference.json
+      "src/lib/addon-catalog-reference.test.ts",
       // Lot 1 add-ons : garde prix LIVE (add-on invisible et non achetable sans variable de prix)
       "src/lib/addon-price-gate.test.ts",
       "src/lib/addon-test-price-overrides.test.ts",
