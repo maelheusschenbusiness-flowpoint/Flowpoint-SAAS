@@ -63,10 +63,12 @@ inventer de jeton DNS.
    Render peut aussi créer automatiquement son alias `www` et le rediriger vers
    l’apex; cette paire automatique est autorisée. Ne pas ajouter manuellement
    un second alias.
-5. Vérifier le statut de la paire de domaines et du certificat TLS dans Render.
-   L’alias `www` est acceptable seulement si Render l’ajoute automatiquement
-   sans nouveau coût hors des ressources/domaines inclus déjà payés. Si un coût
-   supplémentaire est affiché, arrêter avant toute bascule.
+5. Vérifier que Render a enregistré l’apex et, le cas échéant, son alias
+   automatique. L’alias `www` est acceptable seulement si Render l’ajoute
+   automatiquement sans nouveau coût hors des ressources/domaines inclus déjà
+   payés. Si un coût supplémentaire est affiché, arrêter avant toute bascule.
+   Le certificat TLS peut rester en attente tant que le DNS ne pointe pas vers
+   Render; ne pas présenter le site au public avant que TLS soit actif.
 6. Dans **Environment**, configurer les variables ci-dessous dans le service
    existant seulement après l’autorisation de configurer la production. Les
    valeurs secrètes ne doivent être saisies que dans l’interface sécurisée,
@@ -96,8 +98,8 @@ d’écriture, envoyer un e-mail, ou soumettre un formulaire demandent chacun un
 autorisation distincte. Le service marketing ne modifie pas `app.flowpoint.pro`;
 les événements de funnel existants pointent toujours vers cette application.
 
-7. Avant DNS, vérifier en lecture seule les domaines et leur statut TLS dans
-   Render, puis le staging :
+7. Avant DNS, vérifier en lecture seule la paire de domaines dans Render, puis
+   le staging :
    - l’URL `.onrender.com` répond 200 et garde
      `X-Robots-Tag: noindex, nofollow`;
    - le rendu SSR, les routes publiques, le favicon et les erreurs 404 sont
