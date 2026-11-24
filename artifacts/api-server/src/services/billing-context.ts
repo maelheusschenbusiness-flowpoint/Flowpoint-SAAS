@@ -9,7 +9,7 @@
  */
 
 import { pool } from "@workspace/db";
-import { PLAN_INCLUDED_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { getIncludedAddonsForOrg, QTY_ADDONS } from "../lib/plans.js";
 import { loadOrgData } from "./org-data.js";
 import { normalizeSubscriptionStatus, statusGrantsAccess } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
@@ -44,6 +44,8 @@ export interface BillingContext {
   pendingPlan: string | null;
   /** Date lisible quand pendingPlan devient effectif */
   pendingPlanDate: string | null;
+  /** Création de l'organisation (ISO) : sert aux droits historiques préservés */
+  createdAt: string | null;
 
   // ── Flags dérivés ────────────────────────────────────────────────────────
   /** true quand status est "active" ou "trialing" (vrai trial Stripe) */
@@ -122,7 +124,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   // Overlay plan-bundled addons so feature gates work without manual DB activation.
   // This is read-only — no writes to org_addons happen here.
   const planName = orgData.plan.toLowerCase();
-  const planIncluded = PLAN_INCLUDED_ADDONS[planName] ?? new Set<string>();
+  const planIncluded = getIncludedAddonsForOrg(planName, orgData.createdAt);
   for (const key of planIncluded) {
     if (!(key in addons)) {
       addons[key] = true;
@@ -181,6 +183,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     addons,
     pendingPlan:           orgData?.pendingPlan     ?? null,
     pendingPlanDate:       orgData?.pendingPlanDate ?? null,
+    createdAt:             orgData?.createdAt ?? null,
     hasPremiumAccess,
     canStartTrial,
     mustCompleteBilling,

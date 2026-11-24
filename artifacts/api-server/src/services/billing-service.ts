@@ -5,7 +5,7 @@ import { logger } from "../lib/logger.js";
 import { loadOrgSettings } from "./org-settings.js";
 import { loadOrgData } from "./org-data.js";
 import { loadBillingContext } from "./billing-context.js";
-import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, computeQtyAddonExtras, getAddonAvailability, isPriceGatedAddonKey } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS, PLAN_INCLUDED_ADDONS, getIncludedAddonsForOrg, PLAN_ALLOWED_ADDONS, ADDON_DEFINITIONS, REMOVED_ADDONS, computeQtyAddonExtras, getAddonAvailability, isPriceGatedAddonKey } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
 const _PLAN_PRESENTATION: Record<string, {
@@ -177,6 +177,7 @@ export async function getUsageSummary(orgId = "default") {
       stripeSubscriptionId: orgData?.stripeSubscriptionId ?? null,
       stripeCustomerId: orgData?.stripeCustomerId ?? null,
       trialConsumedAt: null,
+      createdAt: orgData?.createdAt ?? null,
     };
   });
 
@@ -184,7 +185,7 @@ export async function getUsageSummary(orgId = "default") {
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS["standard"]!;
 
   // Build addon list with includedInPlan flag for the dashboard
-  const planIncluded = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
+  const planIncluded = getIncludedAddonsForOrg(plan, billingCtx.createdAt);
   const addonsWithFlags: Record<string, { active: boolean | number; includedInPlan: boolean }> = {};
   for (const [key, val] of Object.entries(billingCtx.addons)) {
     addonsWithFlags[key] = {

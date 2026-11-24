@@ -3,7 +3,7 @@ import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuo
 import { store } from "../services/store.js";
 import { loadOrgData } from "../services/org-data.js";
 import { ownerOnly } from "../middlewares/requireRole.js";
-import { PLAN_INCLUDED_ADDONS, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus } from "../lib/plans.js";
+import { getIncludedAddonsForOrg, isPlanAllowedAddon, ADDON_DEFINITIONS as CANONICAL_ADDON_DEFINITIONS, COMING_SOON_ADDONS, REMOVED_ADDONS, getAddonAvailability, getAddonStatus } from "../lib/plans.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -19,18 +19,12 @@ router.get("/addons", async (req: Request, res: Response) => {
     const liveAddons: Record<string, boolean | number> = { ...((dbData?.addons ?? {}) as Record<string, boolean | number>), ...(orgAddons ?? {}) };
     for (const removedKey of REMOVED_ADDONS) delete liveAddons[removedKey];
     // Overlay plan-bundled addons so subscribers see entitlements without manual activation.
-    const planIncluded = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
+    const planIncluded = getIncludedAddonsForOrg(plan, dbData?.createdAt);
     for (const key of planIncluded) {
       if (!(key in liveAddons)) liveAddons[key] = true;
     }
-    // P1 — retention90d is superseded by retention365d on Ultra.
-    // A Pro→Ultra upgrade leaves retention90d active in org_addons (provisionPlanAddons
-    // only adds keys, never deactivates old-tier ones). Remove it here so it is not
-    // counted as an extra paid add-on when the higher-tier superseder is present.
-    if (plan === "ultra" && liveAddons["retention365d"] && liveAddons["retention90d"]) {
-      liveAddons["retention90d"] = false;
-      logger.info({ orgId, plan }, "[P1][addons] retention90d suppressed (superseded by retention365d on Ultra)");
-    }
+    // retention90d est INCLUS dans Ultra (matrice officielle : Ultra hérite des six inclusions Pro) :
+    // aucune suppression. La limite de rétention effective reste la plus haute (365 j si retention365d).
     const quotas = getQuotaLimits(plan, liveAddons);
     const catalog = Object.fromEntries(Object.entries(CANONICAL_ADDON_DEFINITIONS).filter(([key]) => !REMOVED_ADDONS.has(key)).map(([key, definition]) => {
       const active = liveAddons[key] ?? false;
@@ -85,7 +79,7 @@ router.post("/addons/:key/activate", ownerOnly, async (req: Request, res: Respon
   const quantity = Math.min(20, Math.max(1, Math.floor(Number(rawQty ?? 1)) || 1));
   const dbData = await loadOrgData(orgId).catch(() => null);
   const plan = String(dbData?.plan ?? "standard").toLowerCase();
-  if ((PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()).has(key)) {
+  if (getIncludedAddonsForOrg(plan, dbData?.createdAt).has(key)) {
     // Included capabilities are entitlements, never a separately billable
     // add-on. Do not call Stripe or create an org_addons duplicate.
     res.json({ ok: true, addonKey: key, includedInPlan: true, addons: await getOrgAddons(orgId) });

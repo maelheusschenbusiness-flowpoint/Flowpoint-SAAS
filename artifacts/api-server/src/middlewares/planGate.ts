@@ -13,7 +13,7 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { planAtLeast, getFeature, getQuota, normalizePlan, type PlanTier, type FeatureFlags, type CoreQuotas } from "../lib/config.js";
 import { planRequired, quotaExceeded } from "../lib/response.js";
-import { PLAN_INCLUDED_ADDONS } from "../lib/plans.js";
+import { PLAN_INCLUDED_ADDONS, GRANDFATHERED_INCLUDED_ADDONS, isGrandfatheredOrg } from "../lib/plans.js";
 
 const isProd = () => process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"];
 
@@ -200,6 +200,25 @@ export function requireAddon(
       // Check 1: bundled in plan
       const planBundle = PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>();
       if (planBundle.has(addonKey)) { next(); return; }
+
+      // Check 1b: droit historique préservé (grandfathering) — organisations créées avant
+      // la bascule de matrice conservent les inclusions qu'elles avaient (jamais retirées).
+      if (GRANDFATHERED_INCLUDED_ADDONS[plan]?.has(addonKey)) {
+        try {
+          const gClient = await pool.connect();
+          try {
+            const g = await gClient.query<{ created_at: string | Date | null }>(
+              `SELECT created_at FROM organizations WHERE id = $1 LIMIT 1`,
+              [orgId],
+            );
+            if (g.rows.length > 0 && isGrandfatheredOrg(g.rows[0].created_at)) { next(); return; }
+          } finally {
+            gClient.release();
+          }
+        } catch (gErr) {
+          logger.warn({ gErr }, "[PlanGate] grandfathering lookup failed — falling back to org_addons check");
+        }
+      }
 
       // Check 2: purchased in org_addons
       try {

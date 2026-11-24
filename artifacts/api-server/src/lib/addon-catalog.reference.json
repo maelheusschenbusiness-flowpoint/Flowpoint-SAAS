@@ -55,7 +55,8 @@
     "Aucun add-on « stockage » distinct n'existe dans l'historique : le stockage correspond aux packs de rétention (retention90d, retention365d, catégorie Storage).",
     "type: feature|capacity|ai-credits|retention|seats ; status: available|coming_soon|beta|retired|removed ; plansAllowed = isPlanAllowedAddon (achat), plansIncluded = PLAN_INCLUDED_ADDONS.",
     "inBranch=false : clé validée mais pas encore portée sur Flowpoint (lot 2 / SEO Content Decay Radar). Le test exige qu'elle soit absente du code ; son portage doit passer inBranch à true avec son statut exact.",
-    "gating=price-gated : add-on du lot 1 ouvert uniquement quand sa variable de prix Stripe est configurée (applyPriceGatedAddons) ; le test l'ouvre avec des variables factices."
+    "gating=price-gated : add-on du lot 1 ouvert uniquement quand sa variable de prix Stripe est configurée (applyPriceGatedAddons) ; le test l'ouvre avec des variables factices.",
+    "Droits acquis (grandfathering) : keywordDomination n'est plus inclus dans Ultra (matrice officielle) mais les organisations créées avant GRANDFATHER_CUTOFF_ISO (lib/plans.ts) conservent leur inclusion ; champ grandfatheredIncluded. Ultra = 10 inclusions (six Pro dont retention90d + customDomain, behavioralAI, aiForecasting, retention365d)."
   ],
   "addons": [
     {
@@ -158,9 +159,7 @@
         "pro",
         "ultra"
       ],
-      "plansIncluded": [
-        "ultra"
-      ],
+      "plansIncluded": [],
       "price": {
         "amountMinor": 3900,
         "currency": "EUR",
@@ -168,9 +167,10 @@
       },
       "quantity": false,
       "inBranch": true,
-      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #8 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)",
-      "validatedPlansIncluded": [],
-      "deviationReason": "Production (Flowpoint) l'inclut dans Ultra ; la matrice confirmée par le propriétaire (billing-addon-included-matrix.md) dit « non inclus dans Ultra, achetable Pro/Ultra ». Droits clients existants : NON modifiés dans cette PR (interdit) ; décision propriétaire requise."
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #8 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message propriétaire 2026-11-24 18:16 (aligner keywordDomination sur la dernière matrice officielle sans retirer de droits acquis) ; billing-addon-included-matrix.md : « available for separate purchase on Pro and Ultra, but not bundled in Ultra » ; droits acquis : organisations Ultra créées avant le 2026-11-25 conservent l'inclusion (GRANDFATHERED_INCLUDED_ADDONS, lib/plans.ts)",
+      "grandfatheredIncluded": [
+        "ultra"
+      ]
     },
     {
       "key": "backlinkIntelligence",
@@ -696,7 +696,8 @@
         "ultra"
       ],
       "plansIncluded": [
-        "pro"
+        "pro",
+        "ultra"
       ],
       "price": {
         "amountMinor": 900,
@@ -705,12 +706,7 @@
       },
       "quantity": false,
       "inBranch": true,
-      "source": ".agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (rétention à conserver)",
-      "validatedPlansIncluded": [
-        "pro",
-        "ultra"
-      ],
-      "deviationReason": "Production (Flowpoint) : inclus Pro seulement ; la matrice validée dit « inclus Pro, hérité par Ultra » (Test-Replit le fait). Droits existants non modifiés dans cette PR."
+      "source": ".agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (rétention à conserver) ; message propriétaire 2026-11-24 18:16 (aligner retention90d sur la matrice) ; billing-addon-included-matrix.md : « Retention 90 days remains included in Pro and is inherited by Ultra »"
     },
     {
       "key": "retention365d",
@@ -995,5 +991,66 @@
       "inBranch": true,
       "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (crédits IA à conserver) ; Stripe TEST 19 € (credits=500000)"
     }
-  ]
+  ],
+  "ui": {
+    "description": "Cartes réellement affichées dans Billing > Add-ons (dashboard.js, liste allAddons). Une carte par add-on listé ; les add-ons « garde prix » (lot 1) n'apparaissent que si le catalogue serveur les publie. États par plan : included = inclus au plan et non coming soon ; soon = coming soon (bouton « Bientôt », jamais « Activer ») ; enable = bouton « Activer » (statut available/beta, plan autorisé à l'acheter, non inclus) ; planUnavailable = bouton désactivé « Non disponible avec votre forfait ». Rendu réel vérifié avec Playwright le 2026-11-24 (catalogue /api/plans/catalog réel).",
+    "expectedCards": {
+      "priceGateClosed": 36,
+      "priceGateOpen": 40
+    },
+    "expectedByPlan": {
+      "priceGateOpen": {
+        "standard": {
+          "included": 1,
+          "soon": 15,
+          "enable": 12,
+          "planUnavailable": 12
+        },
+        "pro": {
+          "included": 6,
+          "soon": 15,
+          "enable": 18,
+          "planUnavailable": 1
+        },
+        "ultra": {
+          "included": 9,
+          "soon": 15,
+          "enable": 16,
+          "planUnavailable": 0
+        }
+      },
+      "priceGateClosed": {
+        "standard": {
+          "included": 1,
+          "soon": 15,
+          "enable": 8,
+          "planUnavailable": 12
+        },
+        "pro": {
+          "included": 6,
+          "soon": 15,
+          "enable": 14,
+          "planUnavailable": 1
+        },
+        "ultra": {
+          "included": 9,
+          "soon": 15,
+          "enable": 12,
+          "planUnavailable": 0
+        }
+      }
+    },
+    "noBillingCard": {
+      "aiCreditsPack50k": "Packs de crédits IA (paiement unique) : achetés via le flux crédits IA (fpBuyAICredits -> pricing.html), pas via la grille Add-ons.",
+      "aiCreditsPack200k": "Packs de crédits IA (paiement unique) : achetés via le flux crédits IA (fpBuyAICredits -> pricing.html), pas via la grille Add-ons.",
+      "aiCreditsPack500k": "Packs de crédits IA (paiement unique) : achetés via le flux crédits IA (fpBuyAICredits -> pricing.html), pas via la grille Add-ons."
+    },
+    "notCardsBecauseNotInBranch": [
+      "seoContentDecayRadar",
+      "agencyPortfolioPriorities",
+      "gbpPerformanceLeads",
+      "localLandingOpportunities",
+      "localPresenceOptimizer"
+    ]
+  }
 }

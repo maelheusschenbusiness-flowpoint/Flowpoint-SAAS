@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { requireOrgId } from "../lib/require-org-id.js";
 import { canAdmin, ownerOnly, canWrite } from "../middlewares/requireRole.js";
 
-import { PLAN_LIMITS, PLAN_INCLUDED_ADDONS, QTY_ADDON_GRANTS } from "../lib/plans.js";
+import { PLAN_LIMITS, getIncludedAddonsForOrg, QTY_ADDON_GRANTS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
 import { loadOrgData }                         from "../services/org-data.js";
 import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
@@ -212,7 +212,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         }
       }
       // Merge plan-included addons (whiteLabel for Standard, etc.) — PLAN_INCLUDED_ADDONS is the source of truth
-      for (const addonKey of PLAN_INCLUDED_ADDONS[plan] ?? new Set<string>()) {
+      for (const addonKey of getIncludedAddonsForOrg(plan, billingData?.createdAt ?? dbData?.createdAt)) {
         if (!_mergedAddons[addonKey]) _mergedAddons[addonKey] = true;
       }
       // Merge org_settings.addons as legacy supplemental (org_addons takes precedence)
@@ -254,14 +254,8 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         role:                   req.orgContext?.role ?? "member",
         org_name:               (dbData?.orgName ?? "").slice(0, 30),
       }, "[P0-ISOLATION][ME]");
-      // ── P1 RETENTION90D SUPPRESSION — fix Ultra double-count ─────────────────
-      // On Ultra, retention90d is superseded by retention365d.  If both are active
-      // (legacy Pro provisioning survived upgrade), remove retention90d from the
-      // merged addons so /api/me does not report 11 active addons for an Ultra org.
-      if (plan === "ultra" && _mergedAddons["retention365d"] && _mergedAddons["retention90d"]) {
-        delete _mergedAddons["retention90d"];
-        logger.info({ orgId, plan }, "[P1][ME] retention90d suppressed (superseded by retention365d on Ultra)");
-      }
+      // retention90d est inclus dans Ultra (matrice officielle) : plus de suppression ;
+      // la limite effective reste 365 j quand retention365d est présent.
       res.json({
         orgId:               orgId,
         firstName,

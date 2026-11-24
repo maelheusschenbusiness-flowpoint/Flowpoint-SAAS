@@ -52,12 +52,23 @@ interface RefEntry {
   validatedTarget?: string;
   validatedPlansAllowed?: string[];
   validatedPlansIncluded?: string[];
+  grandfatheredIncluded?: string[];
   deviationReason?: string;
+}
+
+interface UiExpectation {
+  expectedCards: { priceGateClosed: number; priceGateOpen: number };
+  expectedByPlan: Record<
+    "priceGateOpen" | "priceGateClosed",
+    Record<string, { included: number; soon: number; enable: number; planUnavailable: number }>
+  >;
+  noBillingCard: Record<string, string>;
+  notCardsBecauseNotInBranch: string[];
 }
 
 const reference = JSON.parse(
   readFileSync(fileURLToPath(new URL("./addon-catalog.reference.json", import.meta.url)), "utf8"),
-) as { version: number; addons: RefEntry[] };
+) as { version: number; addons: RefEntry[]; ui: UiExpectation };
 
 const dashboardSources = [
   ["src/frontend/dashboard.js", "../../../../src/frontend/dashboard.js"],
@@ -243,5 +254,150 @@ describe("catalogue d'add-ons : listes du front (Billing / pricing)", () => {
     expect(keys.length).toBeGreaterThan(10);
     const unknown = keys.filter((k) => !refByKey.has(k) || !refByKey.get(k)?.inBranch);
     expect(unknown, "cles de pricing.html absentes de la reference").toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cartes REELLEMENT affichees (Billing > Add-ons) : verrou du nombre et des etats
+// ─────────────────────────────────────────────────────────────────────────────
+function cardsOf(text: string): Array<{ key: string; gated: boolean }> {
+  const match = text.match(/const allAddons = \[([\s\S]*?)\n\s*\];/);
+  const block = match?.[1] ?? "";
+  return [...block.matchAll(/\{\s*key:\s*'([^']+)'([^\n]*?)(?:,\s*cat:)/g)].map((m) => ({
+    key: m[1] as string,
+    gated: /gated:\s*true/.test(m[2] as string),
+  }));
+}
+
+type CardState = "included" | "soon" | "enable" | "planUnavailable";
+
+/** Etat d'une carte pour un plan, derive UNIQUEMENT de la reference (jamais d'une liste locale). */
+function cardState(e: RefEntry, plan: string): CardState {
+  if (e.status === "coming_soon") return "soon";
+  if (e.plansIncluded.includes(plan)) return "included";
+  if (e.plansAllowed.includes(plan)) return "enable";
+  return "planUnavailable";
+}
+
+describe("catalogue d'add-ons : cartes Billing reellement affichees", () => {
+  const gatedKeys = new Set(Object.keys((P["PRICE_GATED_ADDONS"] as Record<string, unknown>) ?? {}));
+
+  it("les deux dashboards affichent exactement les memes cartes, dans le meme ordre", () => {
+    const [a, b] = dashboardSources.map((d) => cardsOf(d.text).map((c) => c.key));
+    expect(a).toEqual(b);
+  });
+
+  it("nombre de cartes attendu (garde prix fermee / ouverte) = reference ui.expectedCards", () => {
+    for (const { name, text } of dashboardSources) {
+      const cards = cardsOf(text);
+      expect(cards.length, `${name} : cartes (garde prix ouverte)`).toBe(reference.ui.expectedCards.priceGateOpen);
+      expect(cards.filter((c) => !c.gated).length, `${name} : cartes (garde prix fermee)`).toBe(
+        reference.ui.expectedCards.priceGateClosed,
+      );
+      // Seules les cles « garde prix » peuvent disparaitre de la grille.
+      for (const c of cards.filter((x) => x.gated)) expect(gatedKeys.has(c.key), `${name} : ${c.key} gated`).toBe(true);
+      for (const k of gatedKeys) expect(cards.find((c) => c.key === k)?.gated, `${name} : ${k} doit etre marque gated`).toBe(true);
+    }
+  });
+
+  it("tout add-on achetable a une carte ; seules les exceptions documentees n'en ont pas", () => {
+    const cardKeys = new Set(cardsOf(dashboardSources[1]!.text).map((c) => c.key));
+    const buyable = inBranch.filter(
+      (e) => (e.status === "available" || e.status === "beta") && e.plansAllowed.length > 0,
+    );
+    const exempt = reference.ui.noBillingCard;
+    for (const e of buyable) {
+      if (cardKeys.has(e.key)) continue;
+      expect(e.key in exempt, `${e.key} est achetable mais n'a AUCUNE carte Billing (ni exception documentee)`).toBe(true);
+      expect(e.type, `${e.key} : exception reservee aux packs de credits IA`).toBe("ai-credits");
+      expect(pricingHtml, `${e.key} doit etre achetable depuis pricing.html`).toContain(`'${e.key}'`);
+    }
+    for (const [k, why] of Object.entries(exempt)) {
+      expect(cardKeys.has(k), `${k} a finalement une carte : retirer l'exception`).toBe(false);
+      expect(why.length).toBeGreaterThan(30);
+    }
+    // Les cles validees mais non portees n'ont evidemment pas de carte.
+    const notPorted = reference.addons.filter((e) => !e.inBranch).map((e) => e.key).sort();
+    expect([...reference.ui.notCardsBecauseNotInBranch].sort()).toEqual(notPorted);
+    for (const k of notPorted) expect(cardKeys.has(k), `${k} non porte : pas de carte`).toBe(false);
+    // Les cles retirees n'ont pas de carte.
+    for (const e of inBranch.filter((x) => x.status === "removed" || x.status === "retired")) {
+      expect(cardKeys.has(e.key), `${e.key} (${e.status}) ne doit pas avoir de carte`).toBe(false);
+    }
+  });
+
+  it("repartition par plan (inclus / bientot / activable / indisponible) = reference ui.expectedByPlan", () => {
+    const all = cardsOf(dashboardSources[1]!.text);
+    for (const [gateMode, cards] of [
+      ["priceGateOpen", all],
+      ["priceGateClosed", all.filter((c) => !c.gated)],
+    ] as const) {
+      for (const plan of PLANS) {
+        const counts = { included: 0, soon: 0, enable: 0, planUnavailable: 0 };
+        for (const c of cards) counts[cardState(refByKey.get(c.key) as RefEntry, plan)]++;
+        expect(counts, `${gateMode} / ${plan}`).toEqual(reference.ui.expectedByPlan[gateMode][plan]);
+        expect(counts.included + counts.soon + counts.enable + counts.planUnavailable).toBe(cards.length);
+      }
+    }
+  });
+
+  it("aucune carte « coming soon » n'est activable : coming soon prime sur tout bouton (Activer, Lancer)", () => {
+    for (const { name, text } of dashboardSources) {
+      const section = text.slice(text.indexOf("SUB: ADD-ONS MARKETPLACE"));
+      const card = section.slice(section.indexOf("ADD-ONS GRID"), section.indexOf("SUB: FACTURES"));
+      const iSoon = card.indexOf("a.availability === 'coming_soon'\n                    ? `<button");
+      const iWizard = card.indexOf("a.wizardFn\n                        ?");
+      expect(iSoon, `${name} : branche coming soon de la carte`).toBeGreaterThan(-1);
+      expect(iWizard, `${name} : branche wizard de la carte`).toBeGreaterThan(iSoon);
+      expect(card, `${name} : un plan non autorise ne doit pas avoir de bouton Activer`).toContain("isPlanBlocked(a)");
+      // L'index passe a fpShowAddonDetail / fpActivateAddon est celui de la liste complete.
+      expect(card, `${name} : index de liste filtree`).not.toContain("fpShowAddonDetail(${_i})");
+    }
+  });
+
+  it("le front ne force plus aucun droit local : pas d'exception retention90d, allowedPlans issu du catalogue", () => {
+    for (const { name, text } of dashboardSources) {
+      expect(text, `${name} : retention90d masque sur Ultra`).not.toMatch(/a\.key === 'retention90d' && planLevel >= 2/);
+      expect(text, `${name} : allowedPlans du catalogue`).toContain("a.allowedPlans   = d && Array.isArray(d.allowedPlans)");
+    }
+  });
+});
+
+describe("catalogue d'add-ons : matrice officielle des inclusions et droits acquis", () => {
+  it("Standard 1 / Pro 6 / Ultra 10 ; Ultra herite des six inclusions Pro", () => {
+    const inc = (plan: string) => [...(P["PLAN_INCLUDED_ADDONS"][plan] as Set<string>)].sort();
+    expect(inc("standard")).toHaveLength(1);
+    expect(inc("pro")).toHaveLength(6);
+    expect(inc("ultra")).toHaveLength(10);
+    for (const k of inc("pro")) expect(inc("ultra"), `Ultra doit heriter de ${k}`).toContain(k);
+    expect(inc("ultra")).toContain("retention90d");
+    expect(inc("ultra")).not.toContain("keywordDomination");
+    expect(inc("pro")).not.toContain("keywordDomination");
+  });
+
+  it("keywordDomination : achat separe Pro/Ultra uniquement, jamais inclus ; droit Ultra historique preserve", () => {
+    const kd = refByKey.get("keywordDomination") as RefEntry;
+    expect(kd.plansAllowed).toEqual(["pro", "ultra"]);
+    expect(kd.plansIncluded).toEqual([]);
+    expect(kd.grandfatheredIncluded).toEqual(["ultra"]);
+    expect([...(P["GRANDFATHERED_INCLUDED_ADDONS"]["ultra"] as Set<string>)]).toEqual(["keywordDomination"]);
+    // Organisation anterieure a la bascule : conserve ; posterieure ou date inconnue : matrice.
+    expect(P["getIncludedAddonsForOrg"]("ultra", "2026-10-01T00:00:00Z").has("keywordDomination")).toBe(true);
+    expect(P["getIncludedAddonsForOrg"]("ultra", new Date("2026-11-24T10:00:00Z")).has("keywordDomination")).toBe(true);
+    expect(P["getIncludedAddonsForOrg"]("ultra", "2026-11-25T00:00:00Z").has("keywordDomination")).toBe(false);
+    expect(P["getIncludedAddonsForOrg"]("ultra", null).has("keywordDomination")).toBe(false);
+    expect(P["getIncludedAddonsForOrg"]("pro", "2026-01-01T00:00:00Z").has("keywordDomination")).toBe(false);
+    expect(P["getIncludedAddonsForOrg"]("standard", "2026-01-01T00:00:00Z").has("keywordDomination")).toBe(false);
+    // Jamais de droit retire : toute inclusion du plan reste incluse pour une organisation ancienne.
+    for (const plan of PLANS) {
+      const grand = P["getIncludedAddonsForOrg"](plan, "2026-01-01T00:00:00Z") as Set<string>;
+      for (const k of P["PLAN_INCLUDED_ADDONS"][plan] as Set<string>) expect(grand.has(k)).toBe(true);
+    }
+  });
+
+  it("retention90d : incluse Pro, heritee par Ultra, achetable Standard", () => {
+    const r = refByKey.get("retention90d") as RefEntry;
+    expect(r.plansIncluded).toEqual(["pro", "ultra"]);
+    expect(r.plansAllowed).toEqual(["standard", "pro", "ultra"]);
   });
 });

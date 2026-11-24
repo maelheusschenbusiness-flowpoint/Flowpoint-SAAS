@@ -10211,6 +10211,11 @@ function renderBilling() {
       // ── Storage ──
       { key:'retention90d', cat:'Storage',    name:'Rétention 90 jours',  icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention90d), tag:'Pro inclus',      roi:'3 mois d\'historique',    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
       { key:'retention365d', cat:'Storage',    name:'Rétention 365 jours', icon:'🗄️', color:'#ef4444', active:!!(me.addons?.retention365d), tag:'Ultra inclus',    roi:'1 an d\'historique complet',    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
+      // ── Packs de capacité (validés #524, vendables) : carte Billing alignée sur le catalogue backend ──
+      { key:'auditsPack200', cat:'SEO', name:'Pack audits +200', icon:'🔍', color:'#2563EB', active:!!(me.addons?.auditsPack200), tag:'Capacité', roi:'+200 audits mensuels', desc:'Ajoutez 200 audits par mois. Cumulable : chaque pack ajoute sa capacité.', features:['+200 audits mensuels par pack','Cumulable (jusqu\'à 20 packs)','Activation immédiate','Annulable à tout moment'] },
+      { key:'auditsPack1000', cat:'SEO', name:'Pack audits +1 000', icon:'🔍', color:'#2563EB', active:!!(me.addons?.auditsPack1000), tag:'Capacité', roi:'+1 000 audits mensuels', desc:'Ajoutez 1 000 audits par mois pour les gros portefeuilles. Cumulable.', features:['+1 000 audits mensuels par pack','Cumulable (jusqu\'à 20 packs)','Activation immédiate','Annulable à tout moment'] },
+      { key:'pdfPack200', cat:'Reporting', name:'Pack PDF +200', icon:'📄', color:'#eab308', active:!!(me.addons?.pdfPack200), tag:'Capacité', roi:'+200 exports PDF', desc:'Ajoutez 200 exports PDF par mois. Cumulable.', features:['+200 exports PDF par pack','Cumulable (jusqu\'à 20 packs)','Activation immédiate','Annulable à tout moment'] },
+      { key:'exportsPack1000', cat:'Reporting', name:'Pack exports +1 000', icon:'📤', color:'#eab308', active:!!(me.addons?.exportsPack1000), tag:'Capacité', roi:'+1 000 exports', desc:'Ajoutez 1 000 exports par mois. Cumulable.', features:['+1 000 exports par pack','Cumulable (jusqu\'à 20 packs)','Activation immédiate','Annulable à tout moment'] },
       // ── API ──
       { key:'advancedWebhooks', cat:'API',        name:'Webhooks Avancés', icon:'🔔', color:'#14b8a6', active:!!(me.addons?.advancedWebhooks), tag:'Pro inclus',      roi:'Alertes temps réel',    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
       { key:'zapierIntegration', cat:'API',        name:'Zapier/Make Integration', icon:'⚙️', color:'#14b8a6', active:!!(me.addons?.zapierIntegration), tag:'No-code',         roi:'1000+ intégrations',    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
@@ -10240,6 +10245,7 @@ function renderBilling() {
       a.oneTime        = d ? !!d.oneTime : false;
       a.price          = d ? _fpEurMinor(d.priceMinor) + (d.oneTime ? '' : '/mois') : '—';
       a.includedFrom   = (_fpCat && _fpCat.includedFromByKey[a.key]) || null;
+      a.allowedPlans   = d && Array.isArray(d.allowedPlans) ? d.allowedPlans : null;
       // availability from server catalog — 'coming_soon' | 'beta' | 'available' | 'live'
       // Fallback 'live' applies only when catalog hasn't loaded yet (d===null).
       a.availability   = (d && (d.status || d.availability)) || 'live';
@@ -10261,12 +10267,12 @@ function renderBilling() {
     const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
     const isIncluded = a => {
       if (a.includedFrom === 'standard') return true;
-      // retention90d is superseded by retention365d on Ultra — hide it to avoid confusion
-      if (a.key === 'retention90d' && planLevel >= 2) return false;
       if (a.includedFrom === 'pro'   && planLevel >= 1) return true;
       if (a.includedFrom === 'ultra' && planLevel >= 2) return true;
       return false;
     };
+    // Plan non autorisé à l'achat (catalogue serveur : allowedPlans) : jamais de bouton « Activer ».
+    const isPlanBlocked = a => !!currentPlan && Array.isArray(a.allowedPlans) && !a.allowedPlans.includes(currentPlan);
 
     // Name -> canonical catalogue key, derived from the array above so the
     // mapping can never drift from it.
@@ -10512,10 +10518,12 @@ function renderBilling() {
                     // Quantity/cumulative add-on already active → qty selector + "Ajouter" + "Désactiver"
                     ? `<div style="display:flex;align-items:center;gap:8px"><div style="display:flex;align-items:center;gap:4px" title="Packs supplémentaires"><button onclick="window._fpAddonQtyStep('${a.key}',-1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">−</button><input id="fp-addon-qty-${a.key}" type="number" value="1" min="1" max="20" readonly style="width:38px;text-align:center;border:1px solid var(--fp-border);border-radius:6px;padding:3px 4px;font-size:13px;background:transparent;color:var(--fp-text)"><button onclick="window._fpAddonQtyStep('${a.key}',1)" style="width:26px;height:26px;border:1px solid var(--fp-border);background:transparent;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--fp-text)">+</button></div><button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Ajouter — ${escHtml(a.price)}</button><button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
                     : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" data-addon-name="${escHtml(a.name)}" onclick="closeFloatPanel&&closeFloatPanel();window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
-                : a.wizardFn
-                  ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
-                  : a.availability === 'coming_soon'
-                    ? `<button class="fp-btn fp-btn-ghost" disabled style="opacity:0.6;cursor:not-allowed">⏳ Bientôt disponible</button>`
+                : a.availability === 'coming_soon'
+                  ? `<button class="fp-btn fp-btn-ghost" disabled style="opacity:0.6;cursor:not-allowed">⏳ Bientôt disponible</button>`
+                  : isPlanBlocked(a)
+                    ? `<button class="fp-btn fp-btn-ghost" disabled style="opacity:0.6;cursor:not-allowed">${fpT('Non disponible avec votre forfait')}</button>`
+                  : a.wizardFn
+                    ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
                   : `${_FP_QTY_ADDON_KEYS[a.key] ? `
                     <div style="display:flex;align-items:center;gap:10px">
                       <div style="display:flex;align-items:center;gap:4px" title="Nombre de packs">
@@ -10570,13 +10578,16 @@ function renderBilling() {
         return `<div class="fp-addon-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
         ${_visibleAddons.map((a, _i) => {
           const _rc = ['#f59e0b','#2563EB','#22c55e','#ef4444'][Math.floor(_i / 4) % 4];
+          // Index dans la liste COMPLETE : le panneau de détail et l'activation lisent _fpAllAddons[idx],
+          // jamais l'index de la liste filtrée (sinon une carte ouvrirait/achèterait un autre add-on).
+          const _gi = allAddons.indexOf(a);
           const inc = isIncluded(a);
           const cardAccent = _rc;
           const _addonDark = document.documentElement.getAttribute('data-theme') !== 'light';
           const borderColor = (inc || a.active) ? cardAccent + '88' : _addonDark ? cardAccent + '33' : cardAccent + '44';
           const bgColor     = _addonDark ? 'rgba(8,13,27,0.92)' : cardAccent + '08';
           return `
-          <div onclick="window.fpShowAddonDetail(${_i})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;display:flex;flex-direction:column" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
+          <div onclick="window.fpShowAddonDetail(${_gi})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;display:flex;flex-direction:column" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
             ${(inc || a.active) ? `<div style="position:absolute;top:0;right:0;width:3px;height:100%;background:linear-gradient(to bottom,${cardAccent},${cardAccent}44)"></div>` : ''}
             <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div style="font-size:20px;flex-shrink:0">${a.icon}</div>
@@ -10600,13 +10611,15 @@ function renderBilling() {
                 : a.active
                   ? (_FP_QTY_ADDON_KEYS[a.key]
                       // Quantity/cumulative add-on already active → offer "Ajouter +1" AND "Désactiver"
-                      ? `<div style="display:flex;gap:4px;align-items:center"><button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Ajouter +1')}</button><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
+                      ? `<div style="display:flex;gap:4px;align-items:center"><button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_gi})">${fpT('Ajouter +1')}</button><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button></div>`
                       : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" data-addon-name="${escHtml(a.name)}" onclick="window.fpDeactivateAddonByName(this.dataset.addonName)">${fpT('Désactiver')}</button>`)
-                  : a.wizardFn
-                    ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
-                    : a.availability === 'coming_soon'
-                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">⏳ Bientôt</button>`
-                      : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">${fpT('Activer →')}</button>`
+                  : a.availability === 'coming_soon'
+                    ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">⏳ Bientôt</button>`
+                    : isPlanBlocked(a)
+                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed">${fpT('Non disponible avec votre forfait')}</button>`
+                      : a.wizardFn
+                        ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
+                        : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_gi})">${fpT('Activer →')}</button>`
               }
             </div>
           </div>`;

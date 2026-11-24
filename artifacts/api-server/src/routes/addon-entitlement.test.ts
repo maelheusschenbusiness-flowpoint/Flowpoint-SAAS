@@ -29,7 +29,7 @@ function makeRes() {
 // ── Unit tests for PLAN_INCLUDED_ADDONS correctness ───────────────────────────
 
 describe("PLAN_INCLUDED_ADDONS", () => {
-  it("plans are cumulative except Ultra upgrades retention90d to retention365d", () => {
+  it("plans are cumulative (Ultra inherits retention90d and adds retention365d)", () => {
     const standard = PLAN_INCLUDED_ADDONS["standard"] ?? new Set();
     const pro      = PLAN_INCLUDED_ADDONS["pro"] ?? new Set();
     const ultra    = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
@@ -40,10 +40,9 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     }
     // everything in pro must be in ultra
     for (const key of pro) {
-      if (key === "retention90d") continue;
       expect(ultra.has(key)).toBe(true);
     }
-    expect(ultra.has("retention90d")).toBe(false);
+    expect(ultra.has("retention90d")).toBe(true);
     expect(ultra.has("retention365d")).toBe(true);
   });
 
@@ -76,9 +75,9 @@ describe("PLAN_INCLUDED_ADDONS", () => {
     expect(pro.has("advancedSeoLab")).toBe(true);
   });
 
-  it("Ultra includes keywordDomination AND behavioralAI (beta + included)", () => {
+  it("Ultra includes behavioralAI (beta + included) but NOT keywordDomination (achat séparé)", () => {
     const ultra = PLAN_INCLUDED_ADDONS["ultra"] ?? new Set();
-    expect(ultra.has("keywordDomination")).toBe(true);
+    expect(ultra.has("keywordDomination")).toBe(false);
     // behavioralAI is BETA + included in Ultra: renders as "🧪 Beta — Inclus dans votre plan"
     // Beta ∩ Included is valid — beta describes maturity, included describes commercial mode.
     expect(ultra.has("behavioralAI")).toBe(true);
