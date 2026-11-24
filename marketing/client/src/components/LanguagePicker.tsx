@@ -84,8 +84,8 @@ function getGoogleTranslateCookieLang(): string | null {
 
 function setGoogleTranslateCookie(langCode: string) {
   const sourceLanguage = getTranslationSourceLanguage();
-  document.cookie = `googtrans=/${sourceLanguage}/${langCode}; path=/; SameSite=Lax`;
-  document.cookie = `googtrans=/${sourceLanguage}/${langCode}; path=/; domain=${window.location.hostname}; SameSite=Lax`;
+  document.cookie = `googtrans=/${sourceLanguage}/${langCode}; path=/; max-age=31536000; SameSite=Lax`;
+  document.cookie = `googtrans=/${sourceLanguage}/${langCode}; path=/; domain=${window.location.hostname}; max-age=31536000; SameSite=Lax`;
 }
 
 function applyLanguage(langCode: string) {
@@ -112,7 +112,7 @@ export function LanguagePicker() {
 
   useEffect(() => {
     try {
-      const activeLang = window.localStorage.getItem("flowpoint-language") || getGoogleTranslateCookieLang() || document.documentElement.lang || "en";
+      const activeLang = getGoogleTranslateCookieLang() || window.localStorage.getItem("flowpoint-language") || document.documentElement.lang || "en";
       const language = LANGUAGES.find((item) => item.code.toLowerCase() === activeLang.toLowerCase());
       setCurrent(language?.code || "en");
     } catch {

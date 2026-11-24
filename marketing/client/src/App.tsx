@@ -10,6 +10,10 @@ import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { FunnelTracking } from "@/components/FunnelTracking";
 import { ApolloTracker } from "@/components/ApolloTracker";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import {
+  normalizeMarketingThemeMode,
+  type MarketingThemeMode,
+} from "@shared/marketing-theme";
 import { ScrollRestoration } from "@/components/ScrollRestoration";
 
 const ANALYTICS_DISABLED = import.meta.env.VITE_ANALYTICS_DISABLED === "true";
@@ -95,7 +99,12 @@ function GoogleTranslateLoader() {
   return null;
 }
 
-function App() {
+function App({ initialThemeMode }: { initialThemeMode?: MarketingThemeMode } = {}) {
+  const themeMode = initialThemeMode ??
+    (typeof document === "undefined"
+      ? "system"
+      : normalizeMarketingThemeMode(document.documentElement.dataset.theme) ?? "system");
+
   useEffect(() => {
     captureMarketingAttribution();
     getActiveFpLid();
@@ -103,7 +112,7 @@ function App() {
   }, []);
 
   return (
-    <ThemeProvider>
+    <ThemeProvider initialMode={themeMode}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />

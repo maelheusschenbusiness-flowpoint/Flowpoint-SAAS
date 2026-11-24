@@ -4,9 +4,11 @@ import path from "path";
 import { isPublicPath } from "./routes/public-paths";
 import { injectMetadata } from "./seo-metadata";
 import { resolveMarketingLanguage } from "@shared/marketing-language";
+import { resolveMarketingThemeMode } from "@shared/marketing-theme";
+import type { MarketingThemeMode } from "@shared/marketing-theme";
 
 let cachedHtml: string | null = null;
-let ssrRender: ((url: string, language?: string) => string) | null = null;
+let ssrRender: ((url: string, language?: string, themeMode?: MarketingThemeMode) => string) | null = null;
 let ssrRenderLoaded = false;
 
 function getIndexHtml(distPath: string): string {
@@ -16,7 +18,7 @@ function getIndexHtml(distPath: string): string {
   return cachedHtml;
 }
 
-function getSsrRender(): ((url: string, language?: string) => string) | null {
+function getSsrRender(): ((url: string, language?: string, themeMode?: MarketingThemeMode) => string) | null {
   if (ssrRenderLoaded) return ssrRender;
   ssrRenderLoaded = true;
   const candidates = [
@@ -61,11 +63,12 @@ export function serveStatic(app: Express) {
     const status = isPublicPath(pathname) ? 200 : 404;
     try {
       const isPricingPath = pathname === "/pricing" || pathname === "/tarifs";
+      const themeMode = resolveMarketingThemeMode(req.get("cookie"));
       const language = isPricingPath
         ? resolveMarketingLanguage(req.originalUrl, req.get("cookie"))
         : "en";
+      res.vary("Cookie");
       if (isPricingPath) {
-        res.vary("Cookie");
         res.set("Cache-Control", "private, no-store");
       }
 
@@ -74,12 +77,13 @@ export function serveStatic(app: Express) {
         raw,
         pathname,
         language,
+        themeMode,
       );
 
       const render = getSsrRender();
       if (render) {
         try {
-          const appHtml = render(pathname, language);
+          const appHtml = render(pathname, language, themeMode);
           const finalPage = page.replace(
             '<div id="root"></div>',
             `<div id="root">${appHtml}</div>`,

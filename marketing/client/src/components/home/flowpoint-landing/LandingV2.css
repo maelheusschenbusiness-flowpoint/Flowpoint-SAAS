@@ -463,6 +463,18 @@
 .fp2-header-tools { display: flex; align-items: center; gap: 8px; }
 .fp2-mobile-language { display: none; }
 .fp2-desktop-language { display: inline-flex; }
+.fp2-mobile-theme { display: none; }
+.fp2-desktop-theme { display: inline-flex; }
+.fp2-theme-picker {
+  min-height: 36px;
+  max-width: 86px;
+  padding: 0 8px;
+  border: 1px solid rgba(151, 174, 213, .28);
+  border-radius: 5px;
+  color: #c8d4e8;
+  background: rgba(10, 20, 35, .62);
+  font: 600 10px "Manrope", sans-serif;
+}
 .fp2-desktop-language button,
 .fp2-mobile-language button {
   color: #c8d4e8 !important;
@@ -478,6 +490,9 @@
   .fp2-header-tools { gap: 7px; }
   .fp2-mobile-language { display: inline-flex; }
   .fp2-desktop-language { display: none; }
+  .fp2-mobile-theme { display: inline-flex; }
+  .fp2-desktop-theme { display: none; }
+  .fp2-theme-picker { max-width: 82px; }
 }
 
 /* Added FlowPoint AI, workspace and privacy sections. */
@@ -650,6 +665,11 @@
 .fp2-page[data-theme="light"] .fp2-brand,
 .fp2-page[data-theme="light"] .fp2-nav { color: #26384f; }
 .fp2-page[data-theme="light"] .fp2-nav > a:not(.fp2-nav-cta):hover { color: #18345e; }
+.fp2-page[data-theme="light"] .fp2-theme-picker {
+  border-color: #cbd6e5;
+  color: #344c6a;
+  background: #fff;
+}
 .fp2-page[data-theme="light"] .fp2-desktop-language button,
 .fp2-page[data-theme="light"] .fp2-mobile-language button { color: #40546f !important; }
 .fp2-page[data-theme="light"] .fp2-hero { background: linear-gradient(180deg, #f7f9fd, #edf2fa 92%); }

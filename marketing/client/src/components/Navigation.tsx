@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu, X, Zap } from "lucide-react";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { ThemePicker } from "@/components/ThemePicker";
 import { trackSignupCta } from "@/lib/analytics";
 
 const EXTERNAL_URL = "https://app.flowpoint.pro/signin.html";
@@ -105,6 +106,7 @@ export function Navigation({
                 </a>
               ))}
               <LanguagePicker />
+              <ThemePicker className="h-10 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
               <div className="flex flex-row items-center gap-2">
                 <Button
                   asChild
@@ -124,6 +126,7 @@ export function Navigation({
 
             <div className="md:hidden flex items-center gap-2">
               <LanguagePicker />
+              <ThemePicker className="h-10 max-w-24 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
               <button
                 onClick={() => setIsOpen(!isOpen)}
                 className={`min-h-11 min-w-11 p-2 ${isLanding ? "text-slate-300 hover:text-blue-300" : "text-slate-600 dark:text-slate-300 hover:text-blue-600"}`}

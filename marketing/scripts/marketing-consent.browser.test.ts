@@ -175,8 +175,8 @@ async function verifyBrowserPricingLanguage(
 }
 
 test(
-  "real Chromium stays responsive after consent and adds fp_vid to the Pro link",
-  { timeout: 45_000 },
+  "Chromium verifies consent, language defaults, and persisted responsive themes",
+  { timeout: 90_000 },
   async () => {
     const executable =
       process.env["CHROMIUM_PATH"] ||
@@ -236,6 +236,7 @@ test(
           "https://translate.google.com/*",
           "https://translate.googleapis.com/*",
           "https://www.googletagmanager.com/*",
+          "*/api/public-audit*",
         ],
       });
       await cdp.send("Page.navigate", {
@@ -308,6 +309,198 @@ test(
         path: "/",
       });
       await verifyBrowserPricingLanguage(cdp, `${base.origin}/pricing`, "fr");
+
+      const defaultResponse = await fetch(`${base.origin}/features`, {
+        headers: { "Accept-Language": "fr-FR,fr;q=0.9" },
+      });
+      assert.equal(defaultResponse.status, 200);
+      const defaultHtml = await defaultResponse.text();
+      assert.match(defaultHtml, /<html lang="en" data-theme="system">/);
+
+      await cdp.send("Network.deleteCookies", { name: "googtrans", url: base.origin });
+      await cdp.send("Network.deleteCookies", { name: "flowpoint-theme", url: base.origin });
+      await cdp.evaluate(
+        `localStorage.removeItem("flowpoint-language"); localStorage.removeItem("flowpoint-theme");`,
+      );
+      await cdp.send("Network.setUserAgentOverride", {
+        userAgent: await cdp.evaluate<string>("navigator.userAgent"),
+        acceptLanguage: "fr-FR,fr;q=0.9",
+      });
+      await cdp.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-color-scheme", value: "dark" }],
+      });
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 1440,
+        height: 1000,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await cdp.send("Page.navigate", { url: `${base.origin}/` });
+
+      const desktopDark = await waitFor(
+        "dark system theme on the desktop homepage",
+        () =>
+          cdp!.evaluate<{
+            lang: string;
+            mode: string;
+            resolved: string;
+            pageTheme: string | null;
+            pickerMode: string | null;
+            pickerVisible: boolean;
+          }>(
+            `(() => { const root = document.documentElement; ` +
+              `const picker = [...document.querySelectorAll('select[data-theme-picker]')]` +
+              `.find(item => item.getClientRects().length > 0); ` +
+              `return { lang: root.lang, mode: root.dataset.theme || "", ` +
+              `resolved: root.classList.contains("dark") ? "dark" : "light", ` +
+              `pageTheme: document.querySelector(".fp2-page")?.getAttribute("data-theme") || null, ` +
+              `pickerMode: picker?.value || null, pickerVisible: Boolean(picker) }; })()`,
+          ).then((state) =>
+            state.lang === "en" && state.resolved === "dark" && state.pageTheme === "dark"
+              ? state
+              : null,
+          ),
+      );
+      assert.equal(desktopDark.mode, "system");
+      assert.equal(desktopDark.pickerMode, "system");
+      assert.equal(desktopDark.pickerVisible, true);
+
+      const setVisibleTheme = async (mode: "system" | "light" | "dark") => {
+        const changed = await cdp!.evaluate<boolean>(
+          `(() => { const picker = [...document.querySelectorAll('select[data-theme-picker]')]` +
+            `.find(item => item.getClientRects().length > 0); ` +
+            `if (!picker) return false; picker.value = ${JSON.stringify(mode)}; ` +
+            `picker.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`,
+        );
+        assert.equal(changed, true, `a visible theme selector must exist for ${mode}`);
+      };
+
+      await setVisibleTheme("light");
+      const lightSelection = await waitFor(
+        "manual light theme",
+        () =>
+          cdp!.evaluate<{
+            mode: string;
+            resolved: string;
+            pageTheme: string | null;
+            resultsHeadingColor: string | null;
+            resultsBodyColor: string | null;
+          }>(
+              `(() => { const heading = document.querySelector(".fp2-signal-heading h2"); ` +
+              `const body = document.querySelector(".fp2-signal-heading > p"); ` +
+              `return { mode: document.documentElement.dataset.theme || "", ` +
+              `resolved: document.documentElement.classList.contains("dark") ? "dark" : "light", ` +
+              `pageTheme: document.querySelector(".fp2-page")?.getAttribute("data-theme") || null, ` +
+              `resultsHeadingColor: heading ? getComputedStyle(heading).color : null, ` +
+              `resultsBodyColor: body ? getComputedStyle(body).color : null }; })()`,
+          ).then((state) =>
+            state.mode === "light" &&
+            state.resolved === "light" &&
+            state.pageTheme === "light" &&
+            state.resultsHeadingColor === "rgb(32, 54, 80)" &&
+            state.resultsBodyColor === "rgb(93, 112, 135)"
+              ? state
+              : null,
+          ),
+      );
+      assert.equal(lightSelection.pageTheme, "light");
+      assert.equal(lightSelection.resultsHeadingColor, "rgb(32, 54, 80)");
+      assert.equal(lightSelection.resultsBodyColor, "rgb(93, 112, 135)");
+      assert.match(await cdp.evaluate<string>("document.cookie"), /flowpoint-theme=light/);
+
+      await cdp.send("Page.navigate", { url: `${base.origin}/features` });
+      const featureTheme = await waitFor(
+        "saved light theme on Features",
+        () =>
+          cdp!.evaluate<{
+            path: string;
+            ready: boolean;
+            mode: string;
+            resolved: string;
+            pickerMode: string | null;
+          }>(
+            `(() => { const picker = document.querySelector('select[data-theme-picker]'); ` +
+              `return { path: location.pathname, ready: document.readyState === "complete", ` +
+              `mode: document.documentElement.dataset.theme || "", ` +
+              `resolved: document.documentElement.classList.contains("dark") ? "dark" : "light", ` +
+              `pickerMode: picker?.value || null }; })()`,
+          ).then((state) =>
+            state.path === "/features" &&
+            state.ready &&
+            state.mode === "light" &&
+            state.resolved === "light" &&
+            state.pickerMode === "light"
+              ? state
+              : null,
+          ),
+      );
+      assert.equal(featureTheme.pickerMode, "light");
+
+      await setVisibleTheme("dark");
+      await cdp.send("Page.navigate", { url: `${base.origin}/pricing` });
+      const pricingTheme = await waitFor(
+        "saved dark theme on Pricing",
+        () =>
+          cdp!.evaluate<{ mode: string; resolved: string; pickerMode: string | null }>(
+            `(() => { const picker = [...document.querySelectorAll('select[data-theme-picker]')]` +
+              `.find(item => item.getClientRects().length > 0); ` +
+              `return { mode: document.documentElement.dataset.theme || "", ` +
+              `resolved: document.documentElement.classList.contains("dark") ? "dark" : "light", ` +
+              `pickerMode: picker?.value || null }; })()`,
+          ).then((state) => (state.mode === "dark" && state.resolved === "dark" ? state : null)),
+      );
+      assert.equal(pricingTheme.pickerMode, "dark");
+
+      await setVisibleTheme("system");
+      await cdp.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-color-scheme", value: "light" }],
+      });
+      await waitFor(
+        "system theme following a light browser preference",
+        () =>
+          cdp!.evaluate<string>(
+            `document.documentElement.dataset.theme === "system" && ` +
+              `!document.documentElement.classList.contains("dark") ? "light" : ""`,
+          ).then((mode) => (mode === "light" ? mode : null)),
+      );
+
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await cdp.send("Page.navigate", { url: `${base.origin}/` });
+      const mobileState = await waitFor(
+        "mobile homepage theme control",
+        () =>
+          cdp!.evaluate<{
+            mode: string;
+            resolved: string;
+            mobilePickerVisible: boolean;
+            desktopPickerVisible: boolean;
+            width: number;
+            documentWidth: number;
+          }>(
+            `(() => { const visible = selector => [...document.querySelectorAll(selector)]` +
+              `.some(item => item.getClientRects().length > 0); ` +
+              `return { mode: document.documentElement.dataset.theme || "", ` +
+              `resolved: document.documentElement.classList.contains("dark") ? "dark" : "light", ` +
+              `mobilePickerVisible: visible(".fp2-mobile-theme select"), ` +
+              `desktopPickerVisible: visible(".fp2-desktop-theme select"), ` +
+              `width: window.innerWidth, documentWidth: document.documentElement.scrollWidth }; })()`,
+          ).then((state) =>
+            state.mode === "system" && state.resolved === "light" && state.mobilePickerVisible
+              ? state
+              : null,
+          ),
+      );
+      assert.equal(mobileState.desktopPickerVisible, false);
+      assert.ok(
+        mobileState.width >= 360 && mobileState.width <= 430,
+        `mobile CSS viewport should remain in the phone range, got ${mobileState.width}px`,
+      );
+      assert.ok(mobileState.documentWidth <= mobileState.width, "mobile layout must not overflow horizontally");
     } finally {
       if (cdp) {
         try {
