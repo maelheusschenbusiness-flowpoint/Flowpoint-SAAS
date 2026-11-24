@@ -121,7 +121,7 @@ test("marketing attribution is validated and preserved without adding a visitor 
   );
   captureMarketingAttribution();
   const signupLink = {
-    href: "https://app.flowpoint.pro/signin.html?plan=pro",
+    href: "https://app.flowpoint.pro/signin.html?plan=pro&utm_source=staging&fp_source=staging&fp_vid=test-visitor",
   } as HTMLAnchorElement;
 
   addFunnelAttributionToSignupLink(signupLink);
@@ -262,7 +262,10 @@ test("staging host sends no commercial tracking and creates no visitor identity"
 
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(fetchCalls, []);
-  assert.equal(signupLink.href, "https://app.flowpoint.pro/signin.html?plan=pro");
+  assert.equal(
+    signupLink.href,
+    "https://app.flowpoint.pro/signin.html?plan=pro&lang=en",
+  );
 });
 
 test("trial disclosure states the card requirement and links to pricing", () => {
