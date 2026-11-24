@@ -243,7 +243,6 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   // ── Enterprise ─────────────────────────────────────────────────────────────
   customDomain:         process.env["STRIPE_PRICE_ID_CUSTOM_DOMAIN"]            ?? "price_1T6AZ39eqtbj6iPB93TgRJvI",
   ssoEnterprise:        process.env["STRIPE_PRICE_ID_SSO_ENTERPRISE"]           ?? "price_1TYpSc9eqtbj6iPBm2SuIBkS",
-  aiWorkspaceLaunch:    process.env["STRIPE_PRICE_ID_AI_WORKSPACE_LAUNCH"]      ?? "price_1TYpUj9eqtbj6iPBhXpzUjTH",
 
   // ── Support ────────────────────────────────────────────────────────────────
   prioritySupport:      process.env["STRIPE_PRICE_ID_PRIORITY_SUPPORT"]         ?? "price_1T6AXP9eqtbj6iPBVSbenAbR",
@@ -335,12 +334,19 @@ export const FLAG_ADDONS = new Set([
   "enterprisePermissions",
   "retention90d","retention365d",
   "advancedWebhooks","zapierIntegration","crmIntegration",
-  "customDomain","ssoEnterprise","aiWorkspaceLaunch",
+  "customDomain","ssoEnterprise",
+  // NOTE: "aiWorkspaceLaunch" removed (owner arbitration 24/11/2026) — no entitlement flag
   // NOTE: "prioritySupport" removed — feature not implemented, no commercial exposure
 ]);
 
-/** Legacy keys retained only for historical Stripe/DB reconciliation. */
-export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
+/**
+ * Legacy keys retained only for historical Stripe/DB reconciliation.
+ * "aiWorkspaceLaunch" : retire definitivement de l'offre commerciale (arbitrage du
+ * proprietaire, 24/11/2026). La definition reste pour que la cle soit reconnue comme
+ * retiree (activation -> 410, devis -> ADDON_REMOVED) ; aucun prix, aucun plan, aucune
+ * carte, aucune inclusion. Ne PAS la remettre dans COMING_SOON_ADDONS ni dans un plan.
+ */
+export const REMOVED_ADDONS = new Set<string>(["prioritySupport", "aiWorkspaceLaunch"]);
 
 /**
  * COMING_SOON_ADDONS — add-ons visible in the UI (roadmap) but NOT yet
@@ -385,12 +391,6 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
   // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
-
-  // aiWorkspaceLaunch: ai-workspace-launch.ts routes exist (POST + GET /:sessionId)
-  // but NO requireAddon("aiWorkspaceLaunch",...) gate — the addon key is not enforced.
-  // Route uses DEFAULT_ROADMAP / DEFAULT_MISSIONS hardcoded fallbacks as primary content.
-  // Not commercially released.
-  "aiWorkspaceLaunch",
 
   // customDomain: route exists but feature is not commercially available yet for
   // Standard/Pro. Included in Ultra but still "coming soon" functionally.
@@ -635,7 +635,7 @@ const _PRO_EXCLUSIVE = new Set<string>([
 ]);
 
 const _ULTRA_EXCLUSIVE = new Set<string>([
-  // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON — not purchasable.
+  // NOTE: agencyPacks, ssoEnterprise are COMING_SOON — not purchasable. aiWorkspaceLaunch is REMOVED.
   "retention365d",
 ]);
 
