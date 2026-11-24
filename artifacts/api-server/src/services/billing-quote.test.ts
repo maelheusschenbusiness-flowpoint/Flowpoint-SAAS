@@ -204,7 +204,7 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
   });
 
   it("blocks slaMonitoring, aiWorkspaceLaunch, crmIntegration, ssoEnterprise explicitly", () => {
-    for (const key of ["slaMonitoring", "aiWorkspaceLaunch", "crmIntegration", "ssoEnterprise"]) {
+    for (const key of ["slaMonitoring", "aiWorkspaceLaunch", "ssoEnterprise"]) // [CERT ONLY] crmIntegration debloque {
       expect(
         () => createBillingQuote({ plan: "ultra", addons: { [key]: true } }),
       ).toThrow("ADDON_COMING_SOON");
