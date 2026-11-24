@@ -114,6 +114,18 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
 
   // [lot1:conversionOpportunityEngine]
   conversionOpportunityEngine: { icon: "📈", unit: "opportunités conversion" },
+  // ── Lot 2 (garde prix) ──
+  // [lot2:agencyPortfolioPriorities]
+  agencyPortfolioPriorities: { icon: "🗂️", unit: "priorités portfolio" },
+
+  // [lot2:localLandingOpportunities]
+  localLandingOpportunities: { icon: "📍", unit: "opportunités locales" },
+
+  // [lot2:localPresenceOptimizer]
+  localPresenceOptimizer: { icon: "📍", unit: "optimisation fiches GBP" },
+
+  // [lot2:gbpPerformanceLeads]
+  gbpPerformanceLeads: { icon: "📊", unit: "performance GBP" },
 };
 
 export const ADDON_CATALOG = Object.entries(_ADDON_PRESENTATION).flatMap(([id, pres]) => {

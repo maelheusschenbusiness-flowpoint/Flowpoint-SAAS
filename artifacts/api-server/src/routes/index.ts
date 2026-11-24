@@ -67,6 +67,18 @@ import seoChangeImpactRouter from "./seo-change-impact.js";
 // [lot1:conversionOpportunityEngine:import]
 import conversionOpportunityEngineRouter from "./conversion-opportunity-engine.js";
 
+// [lot2:agencyPortfolioPriorities:import]
+import agencyPortfolioPrioritiesRouter from "./agency-portfolio-priorities.js";
+
+// [lot2:localLandingOpportunities:import]
+import localLandingOpportunitiesRouter from "./local-landing-opportunities.js";
+
+// [lot2:localPresenceOptimizer:import]
+import localPresenceOptimizerRouter from "./local-presence-optimizer.js";
+
+// [lot2:gbpPerformanceLeads:import]
+import gbpPerformanceRouter from "./gbp-performance.js";
+
 import securityRouter from "./security.js";
 import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
 import analyticsRouter from "./analytics.js";
@@ -272,5 +284,18 @@ router.use(seoChangeImpactRouter);
 
 // [lot1:conversionOpportunityEngine]
 router.use(conversionOpportunityEngineRouter);
+
+// Add-ons du lot 2 (garde prix) : routes protegees par requireAddon(<cle>) ; une section par add-on.
+// [lot2:agencyPortfolioPriorities]
+router.use(agencyPortfolioPrioritiesRouter);
+
+// [lot2:localLandingOpportunities]
+router.use(localLandingOpportunitiesRouter);
+
+// [lot2:localPresenceOptimizer]
+router.use(localPresenceOptimizerRouter);
+
+// [lot2:gbpPerformanceLeads]
+router.use(gbpPerformanceRouter);
 
 export default router;

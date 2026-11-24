@@ -247,72 +247,282 @@ export async function getGBPStatus(orgId: string): Promise<{
 
 // ── GBP API helpers ───────────────────────────────────────────────────────────
 
-async function gbpFetch<T>(token: string, path: string, baseUrl = "https://mybusinessaccountmanagement.googleapis.com/v1"): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(12_000),
+const GBP_ACCOUNT_MGMT_URL = "https://mybusinessaccountmanagement.googleapis.com/v1";
+const GBP_BUSINESS_INFO_URL = "https://mybusinessbusinessinformation.googleapis.com/v1";
+const GBP_V4_URL = "https://mybusiness.googleapis.com/v4";
+const GBP_PERFORMANCE_URL = "https://businessprofileperformance.googleapis.com/v1";
+
+/**
+ * Fields requested from the Business Information API (the `readMask` is mandatory there,
+ * the API returns HTTP 400 without it). Only fields that exist on `Location`.
+ */
+export const GBP_LOCATION_READ_MASK =
+  "name,title,storeCode,storefrontAddress,websiteUri,phoneNumbers,categories,latlng,regularHours,serviceArea,openInfo,profile,metadata";
+
+export type GoogleApiErrorCode =
+  | "NOT_CONNECTED"
+  | "UNAUTHORIZED"
+  | "API_NOT_ENABLED"
+  | "QUOTA_EXCEEDED"
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "BAD_REQUEST"
+  | "UPSTREAM_ERROR"
+  | "NETWORK_ERROR";
+
+/** Typed error for every Google Business Profile call: callers/UI can show a real reason. */
+export class GoogleApiError extends Error {
+  readonly code: GoogleApiErrorCode;
+  readonly status: number;
+  readonly api: string;
+  readonly reason?: string;
+  readonly googleMessage?: string;
+  constructor(init: { code: GoogleApiErrorCode; status: number; api: string; message: string; reason?: string; googleMessage?: string }) {
+    super(init.message);
+    this.name = "GoogleApiError";
+    this.code = init.code;
+    this.status = init.status;
+    this.api = init.api;
+    this.reason = init.reason;
+    this.googleMessage = init.googleMessage;
+  }
+  toJSON() {
+    return { code: this.code, status: this.status, api: this.api, reason: this.reason, message: this.message, googleMessage: this.googleMessage };
+  }
+}
+
+/** Builds a GoogleApiError from a non-2xx Google response (reads the standard error body). */
+export async function googleApiErrorFromResponse(res: Response, api: string): Promise<GoogleApiError> {
+  let body: { error?: { message?: string; status?: string; details?: Array<{ reason?: string }> } } = {};
+  try { body = await res.json() as typeof body; } catch { /* non-JSON body */ }
+  const gMsg = body.error?.message;
+  const gStatus = body.error?.status;
+  const reason = body.error?.details?.map(d => d.reason).find(Boolean) ?? gStatus;
+  const haystack = `${gMsg ?? ""} ${reason ?? ""}`.toLowerCase();
+  let code: GoogleApiErrorCode;
+  if (res.status === 401) code = "UNAUTHORIZED";
+  else if (res.status === 429 || gStatus === "RESOURCE_EXHAUSTED" || reason === "RATE_LIMIT_EXCEEDED" || haystack.includes("quota")) code = "QUOTA_EXCEEDED";
+  else if (res.status === 403 && (reason === "SERVICE_DISABLED" || haystack.includes("has not been used") || haystack.includes("is not enabled") || haystack.includes("disabled"))) code = "API_NOT_ENABLED";
+  else if (res.status === 403) code = "FORBIDDEN";
+  else if (res.status === 404) code = "NOT_FOUND";
+  else if (res.status === 400) code = "BAD_REQUEST";
+  else code = "UPSTREAM_ERROR";
+  const label: Record<GoogleApiErrorCode, string> = {
+    NOT_CONNECTED: "Google account not connected",
+    UNAUTHORIZED: "Google rejected the access token (reconnect Google)",
+    API_NOT_ENABLED: "Google API not enabled on the Cloud project",
+    QUOTA_EXCEEDED: "Google API quota exceeded (or quota is 0 until the API access request is approved)",
+    FORBIDDEN: "Google refused access (missing scope or permission)",
+    NOT_FOUND: "Google resource not found",
+    BAD_REQUEST: "Google rejected the request parameters",
+    UPSTREAM_ERROR: "Google API error",
+    NETWORK_ERROR: "Google API unreachable",
+  };
+  return new GoogleApiError({
+    code, status: res.status, api, reason, googleMessage: gMsg,
+    message: `${label[code]} — ${api} HTTP ${res.status}${reason ? ` (${reason})` : ""}`,
   });
-  if (!res.ok) throw new Error(`GBP API ${res.status} — ${path}`);
+}
+
+async function googleGet<T>(token: string, url: string, api: string, timeoutMs = 12_000): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (e) {
+    throw new GoogleApiError({ code: "NETWORK_ERROR", status: 0, api, message: `Google API unreachable — ${api}: ${(e as Error).message}` });
+  }
+  if (!res.ok) {
+    const err = await googleApiErrorFromResponse(res, api);
+    logger.warn({ api, status: err.status, code: err.code, reason: err.reason, googleMessage: err.googleMessage }, "[google] API call failed");
+    throw err;
+  }
   return res.json() as Promise<T>;
 }
 
+async function requireToken(orgId: string): Promise<string> {
+  try {
+    return await getValidToken(orgId);
+  } catch (e) {
+    throw new GoogleApiError({ code: "NOT_CONNECTED", status: 401, api: "oauth", message: (e as Error).message });
+  }
+}
+
+/** `accounts/123` or `123` -> `123`. Rejects the legacy placeholder `primary` (it is not a GBP account). */
+export function normalizeGbpAccountId(accountId: string): string {
+  const id = String(accountId ?? "").replace(/^accounts\//, "").trim();
+  if (!id || id === "primary") {
+    throw new GoogleApiError({ code: "BAD_REQUEST", status: 400, api: "gbp-accounts", message: "Invalid Google Business Profile account id" });
+  }
+  return id;
+}
+
+/** `locations/456`, `accounts/1/locations/456` or `456` -> `456`. */
+export function gbpLocationId(locationName: string): string {
+  const m = String(locationName ?? "").match(/(?:^|\/)locations\/([^/]+)/);
+  if (m?.[1]) return m[1];
+  return /^[^/]+$/.test(String(locationName ?? "")) ? String(locationName) : "";
+}
+
 export async function getAccounts(orgId: string): Promise<unknown[]> {
-  const token = await getValidToken(orgId).catch(() => null);
-  if (!token) return [];
-  try {
-    const data = await gbpFetch<Record<string, unknown>>(token, "/accounts");
-    return (data["accounts"] as unknown[]) ?? [];
-  } catch { return []; }
+  const token = await requireToken(orgId);
+  const out: unknown[] = [];
+  let pageToken = "";
+  for (let page = 0; page < 20; page++) {
+    const qs = new URLSearchParams({ pageSize: "20" });
+    if (pageToken) qs.set("pageToken", pageToken);
+    const data = await googleGet<{ accounts?: unknown[]; nextPageToken?: string }>(
+      token, `${GBP_ACCOUNT_MGMT_URL}/accounts?${qs}`, "mybusinessaccountmanagement:accounts.list");
+    out.push(...(data.accounts ?? []));
+    pageToken = data.nextPageToken ?? "";
+    if (!pageToken) break;
+  }
+  return out;
 }
 
+/**
+ * Lists every location of a GBP account through the Business Information API
+ * (`accounts.locations.list`). The Account Management API has no `/locations` endpoint.
+ * Follows `nextPageToken`; throws GoogleApiError on failure (never returns a silent []).
+ */
 export async function getLocations(orgId: string, accountId: string): Promise<unknown[]> {
-  const token = await getValidToken(orgId).catch(() => null);
-  if (!token) return [];
-  try {
-    const data = await gbpFetch<Record<string, unknown>>(token, `/accounts/${accountId}/locations`);
-    return (data["locations"] as unknown[]) ?? [];
-  } catch { return []; }
+  const accId = normalizeGbpAccountId(accountId);
+  const token = await requireToken(orgId);
+  const out: unknown[] = [];
+  let pageToken = "";
+  for (let page = 0; page < 50; page++) {
+    const qs = new URLSearchParams({ readMask: GBP_LOCATION_READ_MASK, pageSize: "100" });
+    if (pageToken) qs.set("pageToken", pageToken);
+    const data = await googleGet<{ locations?: unknown[]; nextPageToken?: string }>(
+      token, `${GBP_BUSINESS_INFO_URL}/accounts/${encodeURIComponent(accId)}/locations?${qs}`,
+      "mybusinessbusinessinformation:accounts.locations.list");
+    out.push(...(data.locations ?? []));
+    pageToken = data.nextPageToken ?? "";
+    if (!pageToken) break;
+  }
+  return out;
 }
 
-export async function getLocationReviews(orgId: string, locationName: string): Promise<unknown[]> {
-  const token = await getValidToken(orgId).catch(() => null);
-  if (!token) return [];
+/** Account name (`accounts/{a}`) + location name (`locations/{l}`) -> v4 resource name. */
+export function buildV4LocationName(accountName: string, locationName: string): string {
+  const acc = accountName.startsWith("accounts/") ? accountName : `accounts/${accountName}`;
+  return `${acc}/locations/${gbpLocationId(locationName)}`;
+}
+
+/** Maps a Business Information `Location` to a google_locations row (pure, unit-tested). */
+export function mapLocationToRow(
+  orgId: string,
+  accountName: string,
+  loc: Record<string, unknown>,
+  stats?: { averageRating?: number; totalReviewCount?: number },
+) {
+  const name = String(loc["name"] ?? "");
+  const locId = gbpLocationId(name);
+  const categories = loc["categories"] as { primaryCategory?: { displayName?: string; name?: string } } | undefined;
+  const latlng = loc["latlng"] as { latitude?: number; longitude?: number } | undefined;
+  const phones = loc["phoneNumbers"] as { primaryPhone?: string } | undefined;
+  const primary = categories?.primaryCategory;
+  // raw_data keeps the Google payload; `primaryCategory` is lifted to the top level because the
+  // Local Presence Optimizer reads it there, and `v4Name` is what v4 (reviews/posts) endpoints need.
+  const rawData = {
+    ...loc,
+    ...(primary ? { primaryCategory: primary } : {}),
+    accountName,
+    v4Name: buildV4LocationName(accountName, name),
+  };
+  return {
+    id: `${orgId}_${name}`,
+    orgId,
+    locationId: locId,
+    name: String(loc["title"] ?? "") || name,
+    primaryCategory: primary?.displayName ?? primary?.name ?? null,
+    rating: stats?.averageRating ?? null,
+    reviewsCount: stats?.totalReviewCount ?? 0,
+    phone: phones?.primaryPhone ?? null,
+    website: (loc["websiteUri"] as string | undefined) ?? null,
+    lat: latlng?.latitude ?? null,
+    lng: latlng?.longitude ?? null,
+    rawData,
+  };
+}
+
+/** Resolves a location name to the v4 `accounts/{a}/locations/{l}` form via google_locations. */
+async function resolveV4LocationName(orgId: string, locationName: string): Promise<string> {
+  if (/^accounts\/[^/]+\/locations\/[^/]+/.test(locationName)) return locationName;
+  const locId = gbpLocationId(locationName);
+  const client = await pool.connect();
   try {
-    const res = await fetch(
-      `https://mybusiness.googleapis.com/v4/${locationName}/reviews`,
-      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) }
+    const r = await client.query(
+      `SELECT raw_data->>'v4Name' AS v4 FROM google_locations
+       WHERE org_id=$1 AND (raw_data->>'name' = $2 OR location_id = $3) LIMIT 1`,
+      [orgId, `locations/${locId}`, locId],
     );
-    if (!res.ok) return [];
-    const data = await res.json() as Record<string, unknown>;
-    return (data["reviews"] as unknown[]) ?? [];
-  } catch { return []; }
+    const v4 = (r.rows[0] as { v4?: string } | undefined)?.v4;
+    if (v4) return v4;
+  } finally {
+    client.release();
+  }
+  throw new GoogleApiError({ code: "BAD_REQUEST", status: 400, api: "gbp-v4", message: "Unknown Google account for this location — run a Google Business Profile sync first" });
 }
 
+export async function getLocationReviews(
+  orgId: string, locationName: string,
+): Promise<{ reviews: unknown[]; averageRating?: number; totalReviewCount?: number }> {
+  const token = await requireToken(orgId);
+  const v4 = await resolveV4LocationName(orgId, locationName);
+  const reviews: unknown[] = [];
+  let averageRating: number | undefined;
+  let totalReviewCount: number | undefined;
+  let pageToken = "";
+  for (let page = 0; page < 10; page++) {
+    const qs = new URLSearchParams({ pageSize: "50" });
+    if (pageToken) qs.set("pageToken", pageToken);
+    const data = await googleGet<{ reviews?: unknown[]; averageRating?: number; totalReviewCount?: number; nextPageToken?: string }>(
+      token, `${GBP_V4_URL}/${v4}/reviews?${qs}`, "mybusiness.v4:reviews.list");
+    reviews.push(...(data.reviews ?? []));
+    averageRating = data.averageRating ?? averageRating;
+    totalReviewCount = data.totalReviewCount ?? totalReviewCount;
+    pageToken = data.nextPageToken ?? "";
+    if (!pageToken) break;
+  }
+  return { reviews, averageRating, totalReviewCount };
+}
+
+/** Business Profile Performance API v1 `fetchMultiDailyMetricsTimeSeries` (UTC dates, snake_case range). */
+export function buildPerformanceUrl(locationName: string, startTime: string, endTime: string, metrics: readonly string[]): string {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  const locId = gbpLocationId(locationName);
+  if (!locId || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    throw new GoogleApiError({ code: "BAD_REQUEST", status: 400, api: "businessprofileperformance", message: "Invalid Google Business Profile performance request" });
+  }
+  const params = new URLSearchParams();
+  for (const m of metrics) params.append("dailyMetrics", m);
+  for (const [prefix, d] of [["start_date", start], ["end_date", end]] as const) {
+    params.set(`dailyRange.${prefix}.year`, String(d.getUTCFullYear()));
+    params.set(`dailyRange.${prefix}.month`, String(d.getUTCMonth() + 1));
+    params.set(`dailyRange.${prefix}.day`, String(d.getUTCDate()));
+  }
+  return `${GBP_PERFORMANCE_URL}/locations/${encodeURIComponent(locId)}:fetchMultiDailyMetricsTimeSeries?${params}`;
+}
+
+const DEFAULT_PERFORMANCE_METRICS = [
+  "BUSINESS_IMPRESSIONS_DESKTOP_MAPS", "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+  "BUSINESS_IMPRESSIONS_MOBILE_MAPS", "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+  "CALL_CLICKS", "WEBSITE_CLICKS", "BUSINESS_DIRECTION_REQUESTS",
+] as const;
+
+/** Flat list of `{ dailyMetric, timeSeries }`; throws GoogleApiError on failure. */
 export async function getPerformance(
   orgId: string,
   locationName: string,
-  opts: { startTime: string; endTime: string }
-): Promise<unknown> {
-  const token = await getValidToken(orgId).catch(() => null);
-  if (!token) return { metricValues: [] };
-  const start = new Date(opts.startTime);
-  const end   = new Date(opts.endTime);
-  const url = [
-    `https://businessprofileperformance.googleapis.com/v1/${locationName}:getDailyMetricsTimeSeries`,
-    `?dailyMetric=ALL`,
-    `&dailyRange.startDate.year=${start.getFullYear()}`,
-    `&dailyRange.startDate.month=${start.getMonth() + 1}`,
-    `&dailyRange.startDate.day=${start.getDate()}`,
-    `&dailyRange.endDate.year=${end.getFullYear()}`,
-    `&dailyRange.endDate.month=${end.getMonth() + 1}`,
-    `&dailyRange.endDate.day=${end.getDate()}`,
-  ].join("");
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(12_000),
-  });
-  if (!res.ok) return { metricValues: [] };
-  return res.json();
+  opts: { startTime: string; endTime: string; metrics?: readonly string[] }
+): Promise<unknown[]> {
+  const token = await requireToken(orgId);
+  const url = buildPerformanceUrl(locationName, opts.startTime, opts.endTime, opts.metrics ?? DEFAULT_PERFORMANCE_METRICS);
+  const data = await googleGet<{
+    multiDailyMetricTimeSeries?: Array<{ dailyMetricTimeSeries?: unknown[] }>;
+  }>(token, url, "businessprofileperformance:fetchMultiDailyMetricsTimeSeries");
+  return (data.multiDailyMetricTimeSeries ?? []).flatMap(g => g.dailyMetricTimeSeries ?? []);
 }
 
 export async function publishGBPPost(
@@ -342,13 +552,21 @@ export async function publishGBPPost(
     if (/not connected|no refresh token/i.test(msg)) return { ok: false, error: msg, code: "GOOGLE_NOT_CONNECTED" };
     return { ok: false, error: msg, code: "GOOGLE_AUTH_FAILED" };
   }
+  let v4Location: string;
+  try {
+    v4Location = await resolveV4LocationName(orgId, locationName);
+  } catch (e: any) {
+    // Lieu inconnu (aucune synchronisation GBP) : refus explicite, jamais un faux succes.
+    return { ok: false, error: e?.message ?? "Unknown GBP location", code: "GBP_API_REJECTED" };
+  }
   try {
     const res = await fetch(
-      `https://mybusiness.googleapis.com/v4/${locationName}/localPosts`,
+      `${GBP_V4_URL}/${v4Location}/localPosts`,
       {
         method:  "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body:    JSON.stringify(post),
+        // v4 localPosts.create exige topicType ; STANDARD = mise a jour simple.
+        body:    JSON.stringify({ languageCode: "fr", topicType: "STANDARD", ...post }),
         signal:  AbortSignal.timeout(12_000),
       }
     );
@@ -376,17 +594,17 @@ export async function replyToReview(
   reviewName: string,
   comment: string
 ): Promise<void> {
-  const token = await getValidToken(orgId);
-  const res = await fetch(
-    `https://mybusiness.googleapis.com/v4/${locationName}/${reviewName}/reply`,
-    {
-      method:  "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body:    JSON.stringify({ comment }),
-      signal:  AbortSignal.timeout(12_000),
-    }
-  );
-  if (!res.ok) throw new Error(`replyToReview ${res.status}`);
+  const token = await requireToken(orgId);
+  const reviewPath = reviewName.includes("/reviews/")
+    ? reviewName.replace(/^.*?(accounts\/)/, "$1")
+    : `${await resolveV4LocationName(orgId, locationName)}/reviews/${reviewName.replace(/^reviews\//, "")}`;
+  const res = await fetch(`${GBP_V4_URL}/${reviewPath}/reply`, {
+    method:  "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body:    JSON.stringify({ comment }),
+    signal:  AbortSignal.timeout(12_000),
+  });
+  if (!res.ok) throw await googleApiErrorFromResponse(res, "mybusiness.v4:reviews.updateReply");
 }
 
 export async function generateAIReply(
@@ -406,62 +624,121 @@ export async function generateAIReply(
   return trimmed;
 }
 
-export async function syncAll(orgId: string): Promise<{ accounts: number; locations: number; reviews: number }> {
+export interface GbpSyncError { step: string; code: GoogleApiErrorCode | "UNKNOWN"; status?: number; reason?: string; message: string; }
+export interface GbpSyncResult { accounts: number; locations: number; reviews: number; errors: GbpSyncError[]; }
+
+const STAR_RATINGS: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
+/** v4 `starRating` is an enum word (ONE..FIVE), not a digit. */
+export function parseStarRating(value: unknown): number {
+  return STAR_RATINGS[String(value ?? "").toUpperCase()] ?? 0;
+}
+
+function toSyncError(step: string, e: unknown): GbpSyncError {
+  if (e instanceof GoogleApiError) return { step, code: e.code, status: e.status, reason: e.reason, message: e.message };
+  return { step, code: "UNKNOWN", message: (e as Error)?.message ?? String(e) };
+}
+
+/**
+ * Syncs GBP accounts -> locations (Business Information API) -> reviews (v4) into
+ * google_locations / google_reviews. Failures are logged and returned in `errors`
+ * (a Google failure is never reported as "0 locations" without a reason).
+ */
+export async function syncAll(orgId: string): Promise<GbpSyncResult> {
+  const result: GbpSyncResult = { accounts: 0, locations: 0, reviews: 0, errors: [] };
+  let accounts: unknown[];
   try {
-    const accounts = await getAccounts(orgId);
-    if (!accounts.length) return { accounts: 0, locations: 0, reviews: 0 };
+    accounts = await getAccounts(orgId);
+  } catch (e) {
+    const err = toSyncError("accounts", e);
+    logger.warn({ orgId, ...err }, "[google] syncAll: accounts failed");
+    result.errors.push(err);
+    return result;
+  }
+  result.accounts = accounts.length;
+  if (!accounts.length) return result;
 
-    let totalLocations = 0;
-    let totalReviews   = 0;
-    const client = await pool.connect();
-    try {
-      for (const acc of accounts.slice(0, 3)) {
-        const accId = (acc as Record<string, string>)["name"]?.split("/")[1] ?? "";
-        if (!accId) continue;
-        const locs = await getLocations(orgId, accId);
-        totalLocations += locs.length;
+  const client = await pool.connect();
+  try {
+    for (const acc of accounts.slice(0, 3)) {
+      const accountName = String((acc as Record<string, unknown>)["name"] ?? "");
+      if (!accountName.startsWith("accounts/")) continue;
+      let locs: Array<Record<string, unknown>>;
+      try {
+        locs = await getLocations(orgId, accountName) as Array<Record<string, unknown>>;
+      } catch (e) {
+        const err = toSyncError(`locations:${accountName}`, e);
+        logger.warn({ orgId, ...err }, "[google] syncAll: locations failed");
+        result.errors.push(err);
+        continue;
+      }
+      result.locations += locs.length;
 
-        for (const loc of locs.slice(0, 10)) {
-          const locName = (loc as Record<string, string>)["name"] ?? "";
-          const reviews = await getLocationReviews(orgId, locName);
-          totalReviews += reviews.length;
+      for (const loc of locs.slice(0, 50)) {
+        const locName = String(loc["name"] ?? "");
+        if (!locName) continue;
+        let reviews: Array<Record<string, unknown>> = [];
+        let stats: { averageRating?: number; totalReviewCount?: number } = {};
+        try {
+          const r = await getLocationReviews(orgId, buildV4LocationName(accountName, locName));
+          reviews = r.reviews as Array<Record<string, unknown>>;
+          stats = r;
+          result.reviews += reviews.length;
+        } catch (e) {
+          // Reviews (v4) can be refused independently of locations: keep the location, report it.
+          const err = toSyncError(`reviews:${locName}`, e);
+          logger.warn({ orgId, ...err }, "[google] syncAll: reviews failed");
+          result.errors.push(err);
+        }
 
-          // Upsert location into google_locations
+        const row = mapLocationToRow(orgId, accountName, loc, stats);
+        try {
           await client.query(
-            `INSERT INTO google_locations (id, org_id, name, raw_data, last_sync_at)
-             VALUES ($1,$2,$3,$4,NOW())
-             ON CONFLICT (id) DO UPDATE SET raw_data=$4, last_sync_at=NOW()`,
-            [`${orgId}_${locName}`, orgId, (loc as Record<string, string>)["title"] ?? locName, JSON.stringify(loc)]
-          ).catch(() => {});
+            `INSERT INTO google_locations
+               (id, org_id, location_id, name, primary_category, rating, reviews_count, phone, website, lat, lng, raw_data, last_sync_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+             ON CONFLICT (id) DO UPDATE SET
+               location_id=$3, name=$4, primary_category=$5,
+               rating=COALESCE($6, google_locations.rating),
+               reviews_count=CASE WHEN $7 > 0 THEN $7 ELSE google_locations.reviews_count END,
+               phone=$8, website=$9, lat=$10, lng=$11, raw_data=$12, last_sync_at=NOW()`,
+            [row.id, row.orgId, row.locationId, row.name, row.primaryCategory, row.rating, row.reviewsCount,
+             row.phone, row.website, row.lat, row.lng, JSON.stringify(row.rawData)]
+          );
+        } catch (e) {
+          const err = toSyncError(`db:google_locations:${locName}`, e);
+          logger.warn({ orgId, ...err }, "[google] syncAll: location upsert failed");
+          result.errors.push(err);
+          continue;
+        }
 
-          // Upsert reviews
-          for (const rev of (reviews as Array<Record<string, unknown>>).slice(0, 20)) {
+        for (const rev of reviews.slice(0, 200)) {
+          try {
             await client.query(
               `INSERT INTO google_reviews
-                 (id, org_id, location_id, review_id, reviewer_name, rating, comment, create_time)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-               ON CONFLICT (review_id, org_id) DO UPDATE SET rating=$6, comment=$7`,
+                 (id, org_id, location_id, review_id, reviewer_name, rating, comment, create_time, update_time, reply_comment)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+               ON CONFLICT (review_id, org_id) DO UPDATE SET rating=$6, comment=$7, update_time=$9, reply_comment=$10`,
               [
                 `${orgId}_${rev["reviewId"]}`,
                 orgId,
-                locName,
+                row.id,
                 rev["reviewId"] ?? "",
                 (rev["reviewer"] as Record<string, string>)?.["displayName"] ?? "",
-                parseInt(String((rev["starRating"] ?? "ZERO")).replace(/\D+/, "")) || 0,
+                parseStarRating(rev["starRating"]),
                 (rev["comment"] as string) ?? "",
                 rev["createTime"] ?? new Date().toISOString(),
+                rev["updateTime"] ?? null,
+                (rev["reviewReply"] as Record<string, string> | undefined)?.["comment"] ?? null,
               ]
-            ).catch(() => {});
+            );
+          } catch (e) {
+            result.errors.push(toSyncError("db:google_reviews", e));
           }
         }
       }
-    } finally {
-      client.release();
     }
-
-    return { accounts: accounts.length, locations: totalLocations, reviews: totalReviews };
-  } catch (e) {
-    logger.warn({ e, orgId }, "[google] syncAll failed");
-    return { accounts: 0, locations: 0, reviews: 0 };
+  } finally {
+    client.release();
   }
+  return result;
 }

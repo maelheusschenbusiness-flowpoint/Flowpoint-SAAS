@@ -22,6 +22,8 @@ import {
   getValidToken,
   getAccounts,
   getLocations,
+  getLocationReviews,
+  GoogleApiError,
   getGBPStatus,
   getPerformance,
   publishGBPPost,
@@ -295,13 +297,22 @@ router.post("/google/disconnect", async (req: Request, res: Response) => {
 
 // ── GBP — accounts / locations / reviews ─────────────────────────────────────
 
+/** Surfaces a real Google reason (code/status/reason) instead of a generic 500. */
+function sendGoogleError(res: Response, e: unknown, fallback: string): void {
+  if (e instanceof GoogleApiError) {
+    const http = e.code === "NOT_CONNECTED" || e.code === "UNAUTHORIZED" ? 401 : e.status === 400 ? 400 : 502;
+    res.status(http).json({ ok: false, error: e.message, code: e.code, googleStatus: e.status, reason: e.reason, api: e.api });
+    return;
+  }
+  res.status(500).json({ ok: false, error: (e as Error)?.message ?? fallback });
+}
+
 router.get("/google/accounts", async (req: Request, res: Response) => {
   try {
     const accounts = await getAccounts(getOrgId(req));
     res.json({ ok: true, accounts });
   } catch (e: any) {
-    res.status(e?.message?.includes("not connected") ? 401 : 500)
-       .json({ ok: false, error: e?.message ?? "Failed to get accounts" });
+    sendGoogleError(res, e, "Failed to get accounts");
   }
 });
 
@@ -354,6 +365,52 @@ router.get("/google/reviews", async (req: Request, res: Response) => {
   }
 });
 
+// ── GBP — diagnostics (read-only, Google certification) ─────────────────────
+// Runs each Google call once and reports status per API, so the owner can see exactly which
+// API is not enabled / has quota 0 / lacks scope. Never writes; never returns tokens.
+router.get("/google/gbp/diagnostics", async (req: Request, res: Response) => {
+  const orgId = getOrgId(req);
+  type Step = { ok: boolean; count?: number; error?: string; code?: string; googleStatus?: number; reason?: string };
+  const run = async (fn: () => Promise<number>): Promise<Step> => {
+    try { return { ok: true, count: await fn() }; }
+    catch (e) {
+      if (e instanceof GoogleApiError) return { ok: false, error: e.message, code: e.code, googleStatus: e.status, reason: e.reason };
+      return { ok: false, error: (e as Error).message };
+    }
+  };
+  const steps: Record<string, Step> = {};
+  let accountName = "";
+  let locationName = "";
+  steps["accounts"] = await run(async () => {
+    const accs = await getAccounts(orgId) as Array<{ name?: string }>;
+    accountName = accs[0]?.name ?? "";
+    return accs.length;
+  });
+  if (accountName) {
+    steps["locations"] = await run(async () => {
+      const locs = await getLocations(orgId, accountName) as Array<{ name?: string }>;
+      locationName = locs[0]?.name ?? "";
+      return locs.length;
+    });
+  }
+  if (locationName) {
+    steps["reviews"] = await run(async () => (await getLocationReviews(orgId, `${accountName}/${locationName}`)).reviews.length);
+    const end = new Date(Date.now() - 3 * 86400_000);
+    steps["performance"] = await run(async () =>
+      (await getPerformance(orgId, locationName, { startTime: new Date(end.getTime() - 6 * 86400_000).toISOString(), endTime: end.toISOString() })).length);
+  }
+  const client = await pool.connect();
+  let db = { locations: 0, reviews: 0 };
+  try {
+    const [l, r] = await Promise.all([
+      client.query(`SELECT COUNT(*)::int AS c FROM google_locations WHERE org_id=$1`, [orgId]),
+      client.query(`SELECT COUNT(*)::int AS c FROM google_reviews WHERE org_id=$1`, [orgId]),
+    ]);
+    db = { locations: Number(l.rows[0]?.c ?? 0), reviews: Number(r.rows[0]?.c ?? 0) };
+  } catch { /* tables optional in diagnostics */ } finally { client.release(); }
+  res.json({ ok: Object.values(steps).every(x => x.ok), steps, db });
+});
+
 // ── GBP — sync ────────────────────────────────────────────────────────────────
 
 router.post("/google/sync", async (req: Request, res: Response) => {
@@ -361,7 +418,14 @@ router.post("/google/sync", async (req: Request, res: Response) => {
     const orgId = getOrgId(req);
     store.broadcast({ type: "gbp:sync_started" }, orgId);
     const result = await syncAll(orgId);
-    store.broadcast({ type: "gbp:sync_complete", ...result }, orgId);
+    store.broadcast({ type: "gbp:sync_complete", accounts: result.accounts, locations: result.locations, reviews: result.reviews, errors: result.errors.length }, orgId);
+    // Nothing synced and Google refused: report the real reason (API not enabled, quota 0, ...).
+    const blocking = result.locations === 0 ? result.errors[0] : undefined;
+    if (blocking) {
+      res.status(blocking.code === "NOT_CONNECTED" || blocking.code === "UNAUTHORIZED" ? 401 : 502)
+        .json({ ok: false, error: blocking.message, code: blocking.code, googleStatus: blocking.status, reason: blocking.reason, ...result });
+      return;
+    }
     res.json({ ok: true, ...result });
   } catch (e) {
     logger.error({ e }, "[GBP] Manual sync failed");
@@ -417,7 +481,7 @@ router.get("/google/performance", async (req: Request, res: Response) => {
     res.json({ ok: true, locationName, metrics, summary });
   } catch (e) {
     logger.error({ e }, "[GBP] performance route failed");
-    res.status(500).json({ ok: false, error: "Failed to fetch performance data" });
+    sendGoogleError(res, e, "Failed to fetch performance data");
   }
 });
 

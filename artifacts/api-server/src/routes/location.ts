@@ -243,8 +243,22 @@ router.post("/org/location/sync-gbp", async (req: Request, res: Response): Promi
       return;
     }
 
-    const { getLocations } = await import("../services/google-service.js");
-    const locations = await getLocations(orgId, tokenRow.account_id as string) as Record<string, unknown>[];
+    const { getAccounts, getLocations, GoogleApiError } = await import("../services/google-service.js");
+    let locations: Record<string, unknown>[] = [];
+    try {
+      // google_tokens.account_id is the placeholder "primary", not a GBP account: list real accounts.
+      for (const acc of await getAccounts(orgId) as Array<{ name?: string }>) {
+        if (!acc.name) continue;
+        locations = await getLocations(orgId, acc.name) as Record<string, unknown>[];
+        if (locations.length) break;
+      }
+    } catch (e) {
+      if (e instanceof GoogleApiError) {
+        res.status(502).json({ ok: false, error: e.message, code: e.code, googleStatus: e.status, reason: e.reason });
+        return;
+      }
+      throw e;
+    }
     if (!locations?.length) {
       res.status(404).json({ ok: false, error: "Aucun établissement GBP trouvé" });
       return;

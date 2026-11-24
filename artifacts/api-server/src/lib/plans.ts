@@ -640,7 +640,7 @@ export function getAddonForPriceId(priceId: string): string | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Add-ons « garde prix » (lot 1 de portage depuis Test-Replit)
+// Add-ons « garde prix » (lots 1 et 2 de portage depuis Test-Replit)
 //
 // Un add-on déclaré ici est INVISIBLE ET NON ACHETABLE tant qu'aucun prix
 // Stripe n'est configuré pour lui :
@@ -660,6 +660,8 @@ export interface PriceGatedAddon {
   priceEnvVar: string;
   /** Variables TEST, la première renseignée l'emporte. */
   testPriceEnvVars: readonly string[];
+  /** Plans payants où l'add-on est achetable (défaut : standard, pro, ultra, agency). */
+  plans?: readonly string[];
 }
 
 export const PRICE_GATED_ADDONS: Record<string, PriceGatedAddon> = {};
@@ -692,6 +694,36 @@ PRICE_GATED_ADDONS["conversionOpportunityEngine"] = {
   testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"],
 };
 
+// [lot2:agencyPortfolioPriorities]
+PRICE_GATED_ADDONS["agencyPortfolioPriorities"] = {
+  definition: { name: "Agency Portfolio Priorities", category: "Reporting", description: "Priorisez les sites clients selon les audits SEO et les clics organiques réellement mesurés.", priceEur: 19, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_AGENCY_PORTFOLIO_PRIORITIES",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"],
+};
+
+// [lot2:localLandingOpportunities]
+PRICE_GATED_ADDONS["localLandingOpportunities"] = {
+  definition: { name: "Local Landing Opportunities", category: "Local SEO", description: "Repérez les recherches locales réelles qui justifient une page de service ou de zone.", priceEur: 15, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_LOCAL_LANDING_OPPORTUNITIES",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_LANDING"],
+};
+
+// [lot2:localPresenceOptimizer]
+PRICE_GATED_ADDONS["localPresenceOptimizer"] = {
+  definition: { name: "Local Presence Optimizer", category: "Local SEO", description: "Priorisation des informations manquantes sur vos fiches GBP", priceEur: 9, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_LOCAL_PRESENCE_OPTIMIZER",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"],
+  // Test-Replit : _PRO_EXCLUSIVE (pas d'achat sur Standard).
+  plans: ["pro", "ultra", "agency"],
+};
+
+// [lot2:gbpPerformanceLeads]
+PRICE_GATED_ADDONS["gbpPerformanceLeads"] = {
+  definition: { name: "GBP Performance & Leads", category: "Local SEO", description: "Performances GBP réelles, objectifs configurables et alertes de baisse des actions locales.", priceEur: 15, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_GBP_PERFORMANCE_LEADS",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE"],
+};
+
 function isStripeTestModeActive(): boolean {
   if (process.env["STRIPE_TEST_MODE"] !== "true") return false;
   const key = process.env["STRIPE_TEST_KEY"] || process.env["STRIPE_TEST_SECRET_KEY"] || "";
@@ -718,7 +750,7 @@ export function applyPriceGatedAddons(
     if (test) ADDON_PRICE_IDS_TEST[key] = test;
     ADDON_DEFINITIONS[key] = gated.definition;
     FLAG_ADDONS.add(key);
-    for (const planId of ["standard", "pro", "ultra", "agency"]) {
+    for (const planId of gated.plans ?? ["standard", "pro", "ultra", "agency"]) {
       (PLAN_ALLOWED_ADDONS[planId] as Set<string>).add(key);
     }
     opened.push(key);
