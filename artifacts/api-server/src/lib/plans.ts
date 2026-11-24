@@ -378,10 +378,7 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "aiWorkflows",
 
   // ── Routes exist but not commercially released ─────────────────────────────
-  // crmIntegration: crm.ts routes are complete but addon not yet sold.
-  // Route exists and works, blocked by this set (POST /api/addons/crmIntegration/activate → 503).
-  "crmIntegration",
-
+  // [CERT ONLY] crmIntegration retire de COMING_SOON pour la build beta de certification.
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
   // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
@@ -431,6 +428,8 @@ export const COMING_SOON_ADDONS = new Set<string>([
  *                        volontairement hors BETA_ADDONS.
  */
 export const BETA_ADDONS = new Set<string>([
+  // [CERT ONLY — DO NOT MERGE] CRM achetable sur la build beta de certification.
+  "crmIntegration",
   // Beta describes feature maturity, NOT commercial mode.
   // A beta add-on CAN be included in a plan (e.g. Ultra) — it then shows as
   // "🧪 Beta — Inclus dans votre plan" and cannot be re-purchased.
@@ -594,6 +593,7 @@ const _PRO_EXCLUSIVE = new Set<string>([
   "zapierIntegration",
   "aiForecasting", "marketIntelligence",
   "enterprisePermissions",
+  "crmIntegration", // [CERT ONLY — DO NOT MERGE]
 ]);
 
 const _ULTRA_EXCLUSIVE = new Set<string>([

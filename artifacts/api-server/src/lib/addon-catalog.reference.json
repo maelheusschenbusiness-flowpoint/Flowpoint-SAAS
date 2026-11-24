@@ -774,8 +774,11 @@
       "key": "crmIntegration",
       "label": "Intégration CRM",
       "type": "feature",
-      "status": "coming_soon",
-      "plansAllowed": [],
+      "status": "beta",
+      "plansAllowed": [
+        "pro",
+        "ultra"
+      ],
       "plansIncluded": [],
       "price": {
         "amountMinor": 2900,
@@ -784,7 +787,7 @@
       },
       "quantity": false,
       "inBranch": true,
-      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #7 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #7 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; [CERT ONLY — DO NOT MERGE] debloque pour la build beta de certification (revenir a coming_soon / plansAllowed [] pour la vraie remise en vente)"
     },
     {
       "key": "customDomain",
