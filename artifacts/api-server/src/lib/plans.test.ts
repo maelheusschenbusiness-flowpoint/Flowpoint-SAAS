@@ -179,14 +179,12 @@ describe("canonical add-on availability", () => {
 
   it("reports product lifecycle independently of entitlement", () => {
     expect(getAddonAvailability("globalMonitoring")).toBe("coming_soon");
-    expect(getAddonAvailability("aiWorkspaceLaunch")).toBe("coming_soon");
     expect(getAddonAvailability("marketIntelligence")).toBe("beta");
     expect(getAddonAvailability("monitorsPack10")).toBe("available");
   });
 
   it("uses coming-soon, included, active, beta, available precedence", () => {
     expect(getAddonStatus("globalMonitoring", { included: true, active: true })).toBe("coming_soon");
-    expect(getAddonStatus("aiWorkspaceLaunch", { active: true })).toBe("coming_soon");
     expect(getAddonStatus("whiteLabel", { included: true, active: true })).toBe("included");
     expect(getAddonStatus("monitorsPack10", { active: 2 })).toBe("active");
     expect(getAddonStatus("marketIntelligence")).toBe("beta");

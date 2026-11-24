@@ -187,7 +187,7 @@ describe("billing quote — inclusions", () => {
 import { COMING_SOON_ADDONS, REMOVED_ADDONS, PLAN_ALLOWED_ADDONS } from "../lib/plans.js";
 
 describe("billing quote — addon lifecycle guards (P0)", () => {
-  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS].slice(0, 4); // slaMonitoring, crmIntegration, ssoEnterprise, aiWorkspaceLaunch, ...
+  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS].slice(0, 4); // gbpSlots10, reviewIntelligence, localDominationMaps, zapierIntegration, ...
 
   it("blocks every coming_soon addon on all checkout paths", () => {
     for (const key of COMING_SOON_KEYS) {
@@ -203,8 +203,8 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
     }
   });
 
-  it("blocks slaMonitoring, aiWorkspaceLaunch, crmIntegration, ssoEnterprise explicitly", () => {
-    for (const key of ["slaMonitoring", "aiWorkspaceLaunch", "crmIntegration", "ssoEnterprise"]) {
+  it("blocks slaMonitoring, crmIntegration, ssoEnterprise explicitly", () => {
+    for (const key of ["slaMonitoring", "crmIntegration", "ssoEnterprise"]) {
       expect(
         () => createBillingQuote({ plan: "ultra", addons: { [key]: true } }),
       ).toThrow("ADDON_COMING_SOON");
@@ -220,8 +220,21 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
     ).toThrow("ADDON_REMOVED");
   });
 
+  it("aiWorkspaceLaunch (retire, arbitrage proprietaire 24/11/2026) est refuse comme prioritySupport : ADDON_REMOVED, jamais coming soon", () => {
+    expect(REMOVED_ADDONS.has("aiWorkspaceLaunch")).toBe(true);
+    expect(COMING_SOON_ADDONS.has("aiWorkspaceLaunch")).toBe(false);
+    for (const plan of ["standard", "pro", "ultra"]) {
+      expect(
+        () => createBillingQuote({ plan, addons: { aiWorkspaceLaunch: true } }),
+      ).toThrow("ADDON_REMOVED");
+    }
+    expect(
+      () => createBillingQuote({ plan: "", addons: { aiWorkspaceLaunch: true }, inclusionPlan: "ultra" }),
+    ).toThrow("ADDON_REMOVED");
+  });
+
   it("blocks an addon that is not purchasable on the chosen plan", () => {
-    // ssoEnterprise and aiWorkspaceLaunch are coming_soon so skip those.
+    // ssoEnterprise is coming_soon so skip it.
     // Find an addon that is ONLY in ultra's allowed set, not standard.
     const ultraOnlyKey = [...(PLAN_ALLOWED_ADDONS["ultra"] ?? [])].find(
       k => !PLAN_ALLOWED_ADDONS["standard"]?.has(k) && !COMING_SOON_ADDONS.has(k) && !REMOVED_ADDONS.has(k),

@@ -401,3 +401,96 @@ describe("catalogue d'add-ons : matrice officielle des inclusions et droits acqu
     expect(r.plansAllowed).toEqual(["standard", "pro", "ultra"]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// aiWorkspaceLaunch : RETIRE DEFINITIVEMENT (arbitrage du proprietaire, 24/11/2026)
+// TEST BLOQUANT : l'add-on ne doit JAMAIS reapparaitre dans l'offre commerciale.
+// Seule trace autorisee : sa definition + l'entree REMOVED_ADDONS dans lib/plans.ts
+// (reconnaissance des lignes historiques, activation -> 410 comme prioritySupport).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("aiWorkspaceLaunch : retire definitivement de l'offre commerciale (BLOQUANT)", () => {
+  const KEY = "aiWorkspaceLaunch";
+  const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+  const plansSource = read("./plans.ts");
+  const flowpointExport = (name: string) => read(`../../../flowpoint-export/${name}`);
+
+  it("la reference le marque 'removed' (source : arbitrage du proprietaire), sans plan ni prix vendable", () => {
+    const e = refByKey.get(KEY) as RefEntry;
+    expect(e, "entree de reference conservee (cle reconnue comme retiree)").toBeDefined();
+    expect(e.status).toBe("removed");
+    expect(e.plansAllowed).toEqual([]);
+    expect(e.plansIncluded).toEqual([]);
+    expect(e.inBranch).toBe(true);
+    expect(e.source).toMatch(/arbitrage du propri[ée]taire 24\/11\/2026/i);
+    expect(reference.ui.noBillingCard[KEY]).toBeUndefined();
+  });
+
+  it("lib/plans.ts : reconnu comme retire, absent de toute liste commerciale (statuts, plans, inclusions, prix)", () => {
+    expect((P["REMOVED_ADDONS"] as Set<string>).has(KEY)).toBe(true);
+    expect(statusOf(KEY)).toBe("removed");
+    expect((P["COMING_SOON_ADDONS"] as Set<string>).has(KEY), "COMING_SOON_ADDONS").toBe(false);
+    expect((P["BETA_ADDONS"] as Set<string>).has(KEY), "BETA_ADDONS").toBe(false);
+    expect((P["FLAG_ADDONS"] as Set<string>).has(KEY), "FLAG_ADDONS").toBe(false);
+    expect(Object.keys(P["PRICE_GATED_ADDONS"] ?? {}), "PRICE_GATED_ADDONS").not.toContain(KEY);
+    expect(Object.keys(P["ADDON_PRICE_IDS"] ?? {}), "ADDON_PRICE_IDS").not.toContain(KEY);
+    expect(Object.keys(P["ADDON_PRICE_IDS_TEST"] ?? {}), "ADDON_PRICE_IDS_TEST").not.toContain(KEY);
+    for (const plan of [...PLANS, "agency"]) {
+      expect((P["PLAN_ALLOWED_ADDONS"][plan] as Set<string> | undefined)?.has(KEY), `${plan} : achat`).toBeFalsy();
+      expect((P["PLAN_INCLUDED_ADDONS"][plan] as Set<string> | undefined)?.has(KEY), `${plan} : inclusion`).toBeFalsy();
+      expect(P["isPlanAllowedAddon"](plan, KEY), `${plan} : isPlanAllowedAddon`).toBe(false);
+    }
+    for (const set of Object.values(P["GRANDFATHERED_INCLUDED_ADDONS"] ?? {}) as Array<Set<string>>) {
+      expect(set.has(KEY), "droit acquis").toBe(false);
+    }
+  });
+
+  it("lib/plans.ts (source) : aucune variable d'environnement de prix, aucune autre occurrence que la definition et REMOVED_ADDONS", () => {
+    expect(plansSource).not.toMatch(/AI_WORKSPACE_LAUNCH/);
+    expect(plansSource).not.toMatch(/ai_workspace_launch/i);
+    const code = plansSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
+    const lines = code.split("\n").filter((l) => l.includes(KEY));
+    const unexpected = lines.filter(
+      (l) => !/^\s*aiWorkspaceLaunch:\s*\{\s*name:/.test(l) && !/REMOVED_ADDONS\s*=\s*new Set/.test(l),
+    );
+    expect(unexpected, "occurrence inattendue de aiWorkspaceLaunch dans lib/plans.ts").toEqual([]);
+    expect(lines.length, "definition + REMOVED_ADDONS").toBe(2);
+  });
+
+  it("le devis refuse toujours la cle avec ADDON_REMOVED (jamais 'coming soon'), sur chaque plan", () => {
+    for (const plan of PLANS) {
+      expect(() => createBillingQuote({ plan, addons: { [KEY]: true } } as never)).toThrow("ADDON_REMOVED");
+    }
+  });
+
+  it("/api/plans/catalog ne le liste pas du tout", async () => {
+    const app = express();
+    app.use(plansRouter);
+    const res = await request(app).get("/plans/catalog").expect(200);
+    const keys = (res.body.addons as Array<{ key: string }>).map((a) => a.key);
+    expect(keys).not.toContain(KEY);
+    expect(JSON.stringify(res.body)).not.toContain(KEY);
+    expect(JSON.stringify(res.body)).not.toContain("AI Workspace Launch");
+  });
+
+  it("Billing (dashboards) : aucune carte, aucune reference a la cle (hors assistant historique)", () => {
+    for (const { name, text } of dashboardSources) {
+      expect(text, `${name} : cle ${KEY}`).not.toContain(KEY);
+      expect(text, `${name} : libelle`).not.toMatch(/name:\s*'AI Workspace Launch'/);
+      expect(text, `${name} : wizardFn`).not.toMatch(/wizardFn:\s*'openAIWorkspaceLaunch'/);
+      expect(cardsOf(text).map((c) => c.key), `${name} : cartes`).not.toContain(KEY);
+    }
+  });
+
+  it("pricing.html, success.html, cancel.html et fp-locale.js : plus aucune offre AI Workspace Launch", () => {
+    for (const file of ["pricing.html", "success.html", "cancel.html", "fp-locale.js"]) {
+      const text = flowpointExport(file);
+      expect(text, `${file} : cle ${KEY}`).not.toContain(KEY);
+      expect(text, `${file} : libelle`).not.toContain("AI Workspace Launch");
+      expect(text, `${file} : texte commercial`).not.toContain("Démarrez en 48h avec un workspace");
+    }
+  });
+
+  it("le catalogue de certification Stripe (stripe-cert-setup.cjs) ne cree plus de produit pour cette cle", () => {
+    expect(read("../../stripe-cert-setup.cjs")).not.toContain(KEY);
+  });
+});
