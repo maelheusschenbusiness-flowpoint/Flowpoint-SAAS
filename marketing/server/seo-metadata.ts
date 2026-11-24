@@ -196,7 +196,7 @@ function buildResourceArticleJsonLd(article: ResourceArticle): object {
       url: `${BASE_URL}/`,
       logo: {
         "@type": "ImageObject",
-        url: `${BASE_URL}/favicon.svg?v=2`,
+        url: `${BASE_URL}/favicon.svg?v=3`,
       },
     },
     datePublished: article.datePublished,
