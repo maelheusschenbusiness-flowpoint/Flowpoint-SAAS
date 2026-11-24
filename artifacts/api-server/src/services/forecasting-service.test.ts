@@ -9,7 +9,7 @@ vi.mock("@workspace/db", () => ({
   pool: { connect: () => mockConnect() },
 }));
 
-import { getForecastData } from "./forecasting-service.js";
+import { generateForecasts, getForecastData, forecastRowId } from "./forecasting-service.js";
 
 /**
  * getForecastData — stored forecast summary (PR #496, re-applied on Flowpoint).
@@ -149,5 +149,67 @@ describe("getForecastData — stored forecasts", () => {
     expect(data).toEqual(EMPTY_ANSWER);
     expect(data.available).toBe(false);
     expect(data.forecasts).toEqual([]);
+  });
+
+  describe("generateForecasts — ids and transaction", () => {
+    const LONG_SITE = "https://sous-domaine-tres-long.exemple-de-site-vraiment-long.com/section/page/";
+    const ORG_UUID = "123e4567-e89b-12d3-a456-426614174000";
+
+    it("builds unique fixed-length ids for a long site URL", () => {
+      const ids = new Set<string>();
+      for (let day = 1; day <= 90; day++) {
+        const date = utcDay(day);
+        for (const scenario of ["pessimistic", "realistic", "optimistic"]) {
+          const id = forecastRowId(ORG_UUID, LONG_SITE, date, scenario);
+          expect(id.length).toBeLessThanOrEqual(80);
+          ids.add(id);
+        }
+      }
+      expect(ids.size).toBe(270);
+    });
+
+    function setupGenerate(failOnInsert?: number) {
+      let inserts = 0;
+      const ids: string[] = [];
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (/FROM gsc_sites/.test(sql)) return { rows: [{ site_url: LONG_SITE }] };
+        if (/FROM gsc_keyword_data/.test(sql)) {
+          return { rows: Array.from({ length: 30 }, (_, i) => ({ date: utcDay(-30 + i), clicks: 10 })) };
+        }
+        if (/INSERT INTO seo_forecasts/.test(sql)) {
+          inserts++;
+          if (failOnInsert && inserts === failOnInsert) throw new Error("boom");
+          ids.push(String(params?.[0]));
+          return { rows: [] };
+        }
+        return { rows: [] };
+      });
+      return { ids, calls: () => mockQuery.mock.calls.map(c => String(c[0])) };
+    }
+
+    it("writes 270 distinct ids inside one transaction (long URL)", async () => {
+      const ctx = setupGenerate();
+      await generateForecasts(ORG_UUID, LONG_SITE);
+      expect(ctx.ids).toHaveLength(270);
+      expect(new Set(ctx.ids).size).toBe(270);
+      const calls = ctx.calls();
+      const begin = calls.indexOf("BEGIN");
+      const commit = calls.indexOf("COMMIT");
+      const firstInsert = calls.findIndex(c => /INSERT INTO seo_forecasts/.test(c));
+      const lastInsert = calls.map(c => /INSERT INTO seo_forecasts/.test(c)).lastIndexOf(true);
+      expect(begin).toBeGreaterThan(-1);
+      expect(begin).toBeLessThan(firstInsert);
+      expect(lastInsert).toBeLessThan(commit);
+      expect(calls).not.toContain("ROLLBACK");
+    });
+
+    it("rolls back everything when one insert fails", async () => {
+      const ctx = setupGenerate(100);
+      await expect(generateForecasts(ORG_UUID, LONG_SITE)).rejects.toThrow("boom");
+      const calls = ctx.calls();
+      expect(calls).toContain("ROLLBACK");
+      expect(calls).not.toContain("COMMIT");
+      expect(mockRelease).toHaveBeenCalledTimes(1);
+    });
   });
 });

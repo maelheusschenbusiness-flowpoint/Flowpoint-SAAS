@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { stableId } from "../lib/stable-id.js";
 
 export interface ForecastData {
   siteUrl: string;
@@ -117,6 +118,11 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
   return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
 }
 
+/** Fixed-length unique id of a forecast row (no truncation, no collision on long URLs). */
+export function forecastRowId(orgId: string, siteUrl: string, date: string, scenario: string): string {
+  return stableId("fc", orgId, siteUrl, date, scenario);
+}
+
 export async function generateForecasts(orgId: string, siteUrl: string): Promise<ForecastData> {
   const client = await pool.connect();
   try {
@@ -164,15 +170,28 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
           predictedConversions: 0, predictedRevenue: 0, confidence, scenario });
       }
     }
-    for (const f of forecasts) {
-      await client.query(
-        `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
-           VALUES ($1,$2,$3,$4,$5,0,0,$6,$7,'gsc',NOW())
-         ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
-           predicted_traffic=$5, predicted_conversions=0, predicted_revenue=0, confidence=$6, source='gsc', generated_at=NOW()`,
-        [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
-          orgId, siteUrl, f.date, f.predictedTraffic, f.confidence, f.scenario]
-      );
+    // All-or-nothing: 270 rows written in one transaction. The id is a fixed-length hash of
+    // the business key (org, site, date, scenario): the former truncated id collided on the
+    // primary key for long site URLs.
+    let txActive = false;
+    try {
+      await client.query("BEGIN");
+      txActive = true;
+      for (const f of forecasts) {
+        await client.query(
+          `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, source, generated_at)
+             VALUES ($1,$2,$3,$4,$5,0,0,$6,$7,'gsc',NOW())
+           ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
+             predicted_traffic=$5, predicted_conversions=0, predicted_revenue=0, confidence=$6, source='gsc', generated_at=NOW()`,
+          [forecastRowId(orgId, siteUrl, f.date, f.scenario),
+            orgId, siteUrl, f.date, f.predictedTraffic, f.confidence, f.scenario]
+        );
+      }
+      await client.query("COMMIT");
+      txActive = false;
+    } catch (error) {
+      if (txActive) await client.query("ROLLBACK").catch(() => {});
+      throw error;
     }
     const data = await getForecastData({ orgId, siteUrl });
     return { ...data, available: true, source: "gsc", reason: "Trafic projeté à partir des clics Google Search Console. Conversion et revenu nécessitent GA4." };
