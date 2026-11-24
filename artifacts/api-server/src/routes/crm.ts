@@ -214,7 +214,7 @@ router.post("/crm/test", async (req, res) => {
 
 router.get("/crm/field-mappings/:crmId", async (req, res) => {
   try {
-    const mappings = await getFieldMappings(org(req), req.params.crmId);
+    const mappings = await getFieldMappings(org(req), String(req.params.crmId));
     res.json({ mappings, count: mappings.length });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
@@ -227,7 +227,7 @@ router.post("/crm/field-mappings/:crmId", canWrite, async (req, res) => {
     res.status(400).json({ error: "entityType, flowpointField, crmField requis" }); return;
   }
   try {
-    await upsertFieldMapping(org(req), req.params.crmId, entityType, flowpointField, crmField);
+    await upsertFieldMapping(org(req), String(req.params.crmId), entityType, flowpointField, crmField);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
