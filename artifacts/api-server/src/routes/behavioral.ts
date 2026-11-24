@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { createHash, createHmac, timingSafeEqual } from "crypto";
-import { randomBytes } from "crypto";
+import { createHash, createHmac, timingSafeEqual, randomBytes } from "crypto";
 import { BEHAVIORAL_SESSION_ID_FACTORY } from "../services/behavioral-session-id.js";
 import {
   trackBehaviorEvent, upsertSession, generateBehaviorInsights, getBehaviorInsights,
@@ -8,7 +7,11 @@ import {
 } from "../services/behavioral-service.js";
 import { db, behaviorSiteTokensTable, behaviorEventsTable, croExperimentsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, resolveOrgAddonEntitlement } from "../middlewares/planGate.js";
+import { canWrite } from "../middlewares/requireRole.js";
+import {
+  MAX_TS_SKEW_MS, issueSessionToken, verifySessionToken, consumeNonce,
+} from "../services/behavioral-session-auth.js";
 import { behavioralRateLimit } from "../middlewares/rateLimiter.js";
 
 // ── publicBehavioralRouter — no auth required ─────────────────────────────────
@@ -78,41 +81,31 @@ function browserAttestationPasses(req: Request, siteUrl: string): boolean {
   }
 }
 
-// ── Timestamp + per-site nonce store ─────────────────────────────────────────
-const MAX_TS_SKEW_MS = 5 * 60 * 1000;
-const _usedNonces = new Map<string, number>();
-
-function consumeNonce(siteUrl: string, nonce: string, tsMs: number): boolean {
-  const now = Date.now();
-  for (const [k, exp] of _usedNonces) {
-    if (exp < now) _usedNonces.delete(k);
+// ── Entitlement a l'ingestion ────────────────────────────────────────────────
+// L'organisation vient du jeton de site (public, sans session) : on verifie a CHAQUE appel
+// (cache 30 s dans planGate) qu'elle detient toujours Behavioral AI (plan ou add-on actif).
+// Reponse volontairement generique : ne revele ni le plan, ni l'etat de facturation.
+async function ingestAllowed(orgId: string, res: Response): Promise<boolean> {
+  const ent = await resolveOrgAddonEntitlement(orgId, "behavioralAI");
+  if (ent === "granted") return true;
+  if (ent === "unavailable") {
+    res.status(503).json({ error: "Behavioral tracking temporarily unavailable", code: "BEHAVIORAL_UNAVAILABLE" });
+  } else {
+    res.status(403).json({ error: "Behavioral tracking is not active for this site", code: "BEHAVIORAL_INACTIVE" });
   }
-  const key = `${siteUrl}|${nonce}`;
-  if (_usedNonces.has(key)) return false;
-  _usedNonces.set(key, tsMs + MAX_TS_SKEW_MS);
-  return true;
+  return false;
 }
 
-// ── Short-lived session tokens ────────────────────────────────────────────────
-const SESSION_TOKEN_TTL_MS = 5 * 60 * 1000;
-interface SessionTokenEntry { siteUrl: string; allowedOrigin: string; exp: number; orgId: string; }
-const _sessionTokens = new Map<string, SessionTokenEntry>();
-
-function issueSessionToken(siteUrl: string, origin: string, orgId: string): { token: string; expiresAt: number } {
-  const now = Date.now();
-  for (const [k, v] of _sessionTokens) { if (v.exp < now) _sessionTokens.delete(k); }
-  const token = randomBytes(32).toString("hex");
-  const exp = now + SESSION_TOKEN_TTL_MS;
-  _sessionTokens.set(token, { siteUrl, allowedOrigin: origin, exp, orgId });
-  return { token, expiresAt: exp };
-}
-
-function validateSessionToken(token: string, siteUrl: string, origin: string): boolean {
-  const entry = _sessionTokens.get(token);
-  if (!entry) return false;
-  if (entry.exp < Date.now()) { _sessionTokens.delete(token); return false; }
-  if (entry.siteUrl !== siteUrl || entry.allowedOrigin !== origin) return false;
-  return true;
+// ── Anti-rejeu partage entre instances (PostgreSQL) ──────────────────────────
+// true = nonce accepte ; sinon la reponse (403 rejeu / 503 base indisponible) est deja envoyee.
+async function acceptNonce(siteUrl: string, nonce: unknown, tsNum: number, res: Response, replayMsg: string): Promise<boolean> {
+  try {
+    if (nonce && await consumeNonce(siteUrl, nonce, tsNum)) return true;
+    res.status(403).json({ error: replayMsg });
+  } catch {
+    res.status(503).json({ error: "Replay protection unavailable", code: "BEHAVIORAL_UNAVAILABLE" });
+  }
+  return false;
 }
 
 // ── POST /api/behavioral/token ────────────────────────────────────────────────
@@ -129,9 +122,6 @@ publicBehavioralRouter.post("/behavioral/token", behavioralRateLimit("token"), a
   if (isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Timestamp missing or outside acceptable window" }); return;
   }
-  if (!consumeNonce(siteKey, nonce, tsNum)) {
-    res.status(403).json({ error: "Nonce already used — replay rejected" }); return;
-  }
   const canonical = `${siteKey}|${origin}|${tsNum}|${nonce}`;
   if (!verifyHmac(siteToken, canonical, sig)) {
     res.status(403).json({ error: "Invalid HMAC signature" }); return;
@@ -140,6 +130,10 @@ publicBehavioralRouter.post("/behavioral/token", behavioralRateLimit("token"), a
   if (!resolvedOrgId) {
     res.status(403).json({ error: "Unregistered site or invalid credentials" }); return;
   }
+  // Nonce consomme apres la signature : un tiers sans le jeton de site ne peut pas
+  // remplir la table de nonces ; l'ordre (HMAC valide -> nonce) reste rejeu-sur.
+  if (!(await acceptNonce(siteKey, nonce, tsNum, res, "Nonce already used — replay rejected"))) return;
+  if (!(await ingestAllowed(resolvedOrgId, res))) return;
   const { token, expiresAt } = issueSessionToken(siteKey, origin, resolvedOrgId);
   res.json({ sessionToken: token, expiresAt });
 });
@@ -190,8 +184,8 @@ publicBehavioralRouter.post("/behavioral/event", behavioralRateLimit("event"), a
   const invalidEvent = validateEventPayload({ sessionId, page, eventType, element, xPos, yPos, scrollDepth, timeOnPage, metadata });
   if (invalidEvent) { res.status(400).json({ error: invalidEvent }); return; }
   const origin = req.headers["origin"] as string;
-  const _evtEntry = _sessionTokens.get(sessionToken);
-  if (!_evtEntry || _evtEntry.exp < Date.now() || _evtEntry.siteUrl !== siteUrl || _evtEntry.allowedOrigin !== origin) {
+  const _evtEntry = verifySessionToken(sessionToken, siteUrl, origin);
+  if (!_evtEntry) {
     res.status(403).json({ error: "Invalid or expired session token — call POST /behavioral/token to refresh" }); return;
   }
   const eventOrgId = _evtEntry.orgId;
@@ -199,9 +193,8 @@ publicBehavioralRouter.post("/behavioral/event", behavioralRateLimit("event"), a
   if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Timestamp missing or outside acceptable window" }); return;
   }
-  if (!nonce || !consumeNonce(siteUrl, nonce, tsNum)) {
-    res.status(403).json({ error: "Missing nonce or nonce already used — replay rejected" }); return;
-  }
+  if (!(await ingestAllowed(eventOrgId, res))) return;
+  if (!(await acceptNonce(siteUrl, nonce, tsNum, res, "Missing nonce or nonce already used — replay rejected"))) return;
   if (eventType === "experiment_exposure" || eventType === "experiment_conversion") {
     const meta = metadata && typeof metadata === "object" ? metadata as Record<string, unknown> : {};
     const experimentId = String(meta["experimentId"] ?? "");
@@ -262,15 +255,16 @@ publicBehavioralRouter.post("/behavioral/experiments/assign", behavioralRateLimi
     res.status(403).json({ error: "Origin header required and must match siteUrl" }); return;
   }
   const origin = req.headers["origin"] as string;
-  const entry = _sessionTokens.get(sessionToken);
-  if (!entry || entry.exp < Date.now() || entry.siteUrl !== siteUrl || entry.allowedOrigin !== origin) {
+  const entry = verifySessionToken(sessionToken, siteUrl, origin);
+  if (!entry) {
     res.status(403).json({ error: "Invalid or expired session token" }); return;
   }
   const tsNum = Number(ts);
-  if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS ||
-      !nonce || !consumeNonce(siteUrl, nonce, tsNum)) {
+  if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Invalid timestamp or replayed nonce" }); return;
   }
+  if (!(await ingestAllowed(entry.orgId, res))) return;
+  if (!(await acceptNonce(siteUrl, nonce, tsNum, res, "Invalid timestamp or replayed nonce"))) return;
   try {
     const experiments = await db.select({
       id: croExperimentsTable.id, page: croExperimentsTable.page,
@@ -304,8 +298,8 @@ publicBehavioralRouter.post("/behavioral/session", behavioralRateLimit("session"
     res.status(403).json({ error: "Origin header required and must match siteUrl" }); return;
   }
   const origin = req.headers["origin"] as string;
-  const _sessEntry = _sessionTokens.get(sessionToken);
-  if (!_sessEntry || _sessEntry.exp < Date.now() || _sessEntry.siteUrl !== siteUrl || _sessEntry.allowedOrigin !== origin) {
+  const _sessEntry = verifySessionToken(sessionToken, siteUrl, origin);
+  if (!_sessEntry) {
     res.status(403).json({ error: "Invalid or expired session token — call POST /behavioral/token to refresh" }); return;
   }
   const sessionOrgId = _sessEntry.orgId;
@@ -313,9 +307,8 @@ publicBehavioralRouter.post("/behavioral/session", behavioralRateLimit("session"
   if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Timestamp missing or outside acceptable window" }); return;
   }
-  if (!nonce || !consumeNonce(siteUrl, nonce, tsNum)) {
-    res.status(403).json({ error: "Missing nonce or nonce already used — replay rejected" }); return;
-  }
+  if (!(await ingestAllowed(sessionOrgId, res))) return;
+  if (!(await acceptNonce(siteUrl, nonce, tsNum, res, "Missing nonce or nonce already used — replay rejected"))) return;
   try {
     const stored = await upsertSession({ id, orgId: sessionOrgId, siteUrl, userAgent, deviceType, country });
     if (stored === false) { res.status(503).json({ error: "Behavioral session could not be persisted." }); return; }
@@ -335,7 +328,7 @@ type OrgReq = Request & {
 const orgDb = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 // ── GET /api/behavioral/snippet ───────────────────────────────────────────────
-router.get("/behavioral/snippet", async (req: Request, res: Response) => {
+router.get("/behavioral/snippet", canWrite, requireAddon("behavioralAI", "Behavioral AI"), async (req: Request, res: Response) => {
   const { siteUrl } = req.query as { siteUrl?: string };
   if (!siteUrl) { res.status(400).json({ error: "siteUrl query param required" }); return; }
 
@@ -521,11 +514,22 @@ router.get("/behavioral/status", async (req: Request, res: Response) => {
     const total = Number(row?.total ?? 0);
     const last_event = row?.last_event ?? null;
     const installed = total > 0;
-
+    // Lecture seule toujours possible, mais coherente avec l'ingestion : sans entitlement
+    // Behavioral AI, les evenements sont refuses (403) -> on ne declare pas le snippet « actif ».
+    const ent = await resolveOrgAddonEntitlement(orgId, "behavioralAI");
+    if (ent === "denied") {
+      res.json({
+        installed, totalEvents: total, lastEventAt: last_event, entitled: false, ingesting: false,
+        status: "addon_inactive",
+        message: "Behavioral AI n'est pas actif sur ce compte : la collecte est suspendue. Les données déjà reçues restent conservées.",
+      }); return;
+    }
     res.json({
       installed,
       totalEvents: total,
       lastEventAt: last_event,
+      entitled: ent === "granted",
+      ingesting: ent === "granted",
       status: installed ? "active" : "snippet_not_installed",
       message: installed
         ? `Snippet actif — ${total} événements reçus.`
