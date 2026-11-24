@@ -20,6 +20,7 @@ export const PUBLIC_PATHS = new Set([
   "/features",
   "/fonctionnalites",
   "/seo-audit",
+  "/free-seo-audit",
   "/local-seo",
   "/website-monitoring",
   "/seo-reporting",

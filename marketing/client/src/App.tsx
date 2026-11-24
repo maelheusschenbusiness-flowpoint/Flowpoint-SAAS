@@ -31,6 +31,7 @@ import LocalSeo from "@/pages/LocalSeo";
 import WebsiteMonitoring from "@/pages/WebsiteMonitoring";
 import SeoReporting from "@/pages/SeoReporting";
 import CompetitorAnalysis from "@/pages/CompetitorAnalysis";
+import FreeSeoAudit from "@/pages/FreeSeoAudit";
 import NotFound from "@/pages/not-found";
 import { getActiveFpLid } from "@/lib/fp-lid";
 import {
@@ -62,6 +63,7 @@ function Router() {
       <Route path="/features" component={Features} />
       <Route path="/fonctionnalites" component={Features} />
       <Route path="/seo-audit" component={SeoAudit} />
+      <Route path="/free-seo-audit" component={FreeSeoAudit} />
       <Route path="/local-seo" component={LocalSeo} />
       <Route path="/website-monitoring" component={WebsiteMonitoring} />
       <Route path="/seo-reporting" component={SeoReporting} />

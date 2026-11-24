@@ -14,6 +14,7 @@ import {
   PRICING_FAQS,
   getPricingFaqs,
   SEO_AUDIT_FAQS,
+  FREE_SEO_AUDIT_FAQS,
 } from "@shared/structured-data-content";
 import { HOME_PAGE_TITLE } from "@shared/site-metadata";
 import { HOME_FAQS } from "@shared/home-faqs";
@@ -65,6 +66,12 @@ export const ROUTE_METADATA: Record<string, RouteMetadata> = {
     description:
       "Find technical SEO issues, review on-page content and prioritize practical fixes with FlowPoint. Turn your website audit into clear next steps for your team.",
     canonical: `${BASE_URL}/seo-audit`,
+  },
+  "/free-seo-audit": {
+    title: "Free Website SEO Audit, One Page at a Time | FlowPoint",
+    description:
+      "Check one public page for its title, meta description, canonical and indexing signals, and sampled links. Get a clear free report with no account required.",
+    canonical: `${BASE_URL}/free-seo-audit`,
   },
   "/local-seo": {
     title: "Local SEO Software for Google Maps Rankings | FlowPoint",
@@ -236,6 +243,7 @@ function buildResourceArticleBreadcrumbJsonLd(
 export const ROUTE_JSON_LD: Record<string, object> = {
   "/": buildFaqPageJsonLd(HOME_FAQS),
   "/seo-audit": buildFaqPageJsonLd(SEO_AUDIT_FAQS),
+  "/free-seo-audit": buildFaqPageJsonLd(FREE_SEO_AUDIT_FAQS),
   "/local-seo": buildClusterFaqJsonLd("/local-seo"),
   "/website-monitoring": buildClusterFaqJsonLd("/website-monitoring"),
   "/seo-reporting": buildClusterFaqJsonLd("/seo-reporting"),

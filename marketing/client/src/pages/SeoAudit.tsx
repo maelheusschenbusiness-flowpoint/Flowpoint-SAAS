@@ -409,7 +409,21 @@ export default function SeoAudit() {
               </a>{" "}
               and AI recommendations. You can thus link
               technical findings to the actions that actually support
-              your business. For a practical workflow, see our{" "}
+              your business. For a practical workflow, try the{" "}
+              <a
+                href="/free-seo-audit"
+                className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded-sm"
+              >
+                free one-page SEO audit
+              </a>
+              , then see our{" "}
+              <a
+                href="/resources/technical-seo-audit-checklist"
+                className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded-sm"
+              >
+                technical SEO audit checklist
+              </a>
+              ,{" "}
               <a
                 href="/resources/audit-seo-pme-priorites"
                 className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded-sm"

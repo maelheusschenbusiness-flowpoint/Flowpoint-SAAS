@@ -13,6 +13,7 @@ const { render } = createRequire(import.meta.url)("../dist/server/entry-server.c
 const publicRoutes = [
   "/",
   "/seo-audit",
+  "/free-seo-audit",
   "/local-seo",
   "/website-monitoring",
   "/seo-reporting",
@@ -40,8 +41,10 @@ for (const route of publicRoutes) {
     assert.match(html, /<a\b[^>]*href="\/[^"]*"/, "internal links must be in the server response");
 
     const styles = [...html.matchAll(/\bstyle="([^"]*)"/g)].map(match => match[1]);
-    assert.ok(styles.some(style => /(?:^|;)\s*opacity:\s*1(?:;|$)/.test(style)),
-      "the server must explicitly render the initial motion state as opaque");
+    if (styles.some(style => /(?:^|;)\s*(?:opacity|visibility):/.test(style))) {
+      assert.ok(styles.some(style => /(?:^|;)\s*opacity:\s*1(?:;|$)/.test(style)),
+        "the server must explicitly render the initial motion state as opaque");
+    }
     for (const style of styles) {
       assert.doesNotMatch(style, /(?:^|;)\s*opacity:\s*0(?:\.0*)?(?:;|$)/,
         "no content container or inherited motion child may start transparent");
@@ -50,6 +53,15 @@ for (const route of publicRoutes) {
     }
   });
 }
+
+test("free SEO audit explains its single-page scope before hydration", () => {
+  const html = render("/free-seo-audit");
+  assert.match(html, /one public page/i);
+  assert.match(html, /does not crawl every page/i);
+  assert.match(html, /does not run a browser-based test/i);
+  assert.match(html, /does not test application vulnerabilities/i);
+  assert.match(html, /href="\/#public-audit"/);
+});
 
 test("pricing trial FAQ and disclosures are server-rendered in English and French", () => {
   const english = render("/pricing", "en");

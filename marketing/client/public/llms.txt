@@ -16,6 +16,7 @@
 ## Product pages
 
 - [SEO audit](https://flowpoint.pro/seo-audit): Website analysis and prioritized search optimization opportunities
+- [Free SEO audit](https://flowpoint.pro/free-seo-audit): A free, no-account check of one public page with clearly stated limits
 - [Local SEO](https://flowpoint.pro/local-seo): Local visibility and geographic search tracking
 - [Website monitoring](https://flowpoint.pro/website-monitoring): Availability, performance and technical monitoring
 - [SEO reporting](https://flowpoint.pro/seo-reporting): Clear reports for reviewing SEO performance and next steps
