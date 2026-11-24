@@ -1,0 +1,926 @@
+{
+  "version": 1,
+  "branch": "Test-Replit",
+  "generatedOn": "2026-11-24",
+  "description": "Catalogue d'add-ons validé (référence versionnée). Toute modification de clé, statut, plan autorisé ou prix dans lib/plans.ts DOIT être accompagnée d'une mise à jour délibérée de ce fichier ; addon-catalog-reference.test.ts bloque la CI sinon.",
+  "baseline": {
+    "v1KeyCount": 40,
+    "sourceCommit": "4757c0a3",
+    "sourceMemory": ".agents/memory/billing-addon-included-matrix.md"
+  },
+  "changes": [
+    {
+      "op": "remove",
+      "key": "prioritySupport",
+      "source": "commit bd1e06cf (2026-08-23) ; REMOVED_ADDONS ; clé conservée pour la réconciliation historique Stripe/DB"
+    },
+    {
+      "op": "add",
+      "keys": [
+        "gbpPerformanceLeads",
+        "localPresenceOptimizer",
+        "localLandingOpportunities",
+        "conversionOpportunityEngine",
+        "seoChangeImpact",
+        "agencyPortfolioPriorities",
+        "technicalSeoFixVerification",
+        "organicCampaignTracker"
+      ],
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés, prix cibles 15/9/15/12/15/19/19/12 €)"
+    },
+    {
+      "op": "add",
+      "keys": [
+        "seoContentDecayRadar"
+      ],
+      "source": "PR #183 ; message propriétaire 2026-11-21 19:39 (clé distincte de aiContentStrategist)"
+    },
+    {
+      "op": "retire-from-new-sales",
+      "keys": [
+        "gbpSlots10",
+        "reviewIntelligence",
+        "localDominationMaps",
+        "abTestingAI",
+        "aiWorkflows",
+        "enterprisePermissions",
+        "advancedWebhooks",
+        "zapierIntegration"
+      ],
+      "source": "commit f5ac6cda (2026-10-24, huit add-ons remplacés) ; droits existants conservés"
+    }
+  ],
+  "notes": [
+    "aiWorkspaceLaunch EST validé : clé V1 (commit 4757c0a3, 2026-08-13), un des 16 modules de la liste définitive du propriétaire, module #13 de docs/beta2-addon-matrix.md, cité par le propriétaire le 2026-11-12 14:07 et le 2026-11-21 13:57. Aucune décision de retrait trouvée. Statut coming_soon, aucun produit Stripe, aucune organisation de production ne le détient.",
+    "Aucun add-on « stockage » distinct n'existe dans l'historique : le stockage correspond aux packs de rétention (retention90d, retention365d, catégorie Storage).",
+    "type: feature|capacity|ai-credits|retention|seats ; status: available|coming_soon|beta|retired|removed ; plansAllowed = isPlanAllowedAddon (achat), plansIncluded = PLAN_INCLUDED_ADDONS."
+  ],
+  "addons": [
+    {
+      "key": "monitorsPack10",
+      "label": "+10 Monitors",
+      "type": "capacity",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (packs de capacité à conserver) ; Stripe TEST price metadata addonKey"
+    },
+    {
+      "key": "monitorsPack50",
+      "label": "+50 Monitors",
+      "type": "capacity",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (packs de capacité à conserver)"
+    },
+    {
+      "key": "globalMonitoring",
+      "label": "Global Monitoring",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 4900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #10 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; coming_soon jusqu'à monitor QA réel (addon-v1-testing-boundary.md)"
+    },
+    {
+      "key": "slaMonitoring",
+      "label": "SLA Monitoring Avancé",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #11 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "advancedSeoLab",
+      "label": "Advanced SEO Lab",
+      "type": "feature",
+      "status": "available",
+      "plansAllowed": [],
+      "plansIncluded": [
+        "pro",
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 2900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #9 ; .agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "keywordDomination",
+      "label": "Keyword Domination Engine",
+      "type": "feature",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 3900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #8 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)",
+      "validatedPlansAllowed": [
+        "pro",
+        "ultra"
+      ],
+      "deviationReason": "Test-Replit autorise l'achat sur Standard (règle QA du 2026-10-29 « tout add-on vendable achetable sur toutes les offres ») ; la matrice validée dit « achat séparé sur Pro et Ultra » (Flowpoint s'y conforme)."
+    },
+    {
+      "key": "backlinkIntelligence",
+      "label": "Backlink Intelligence",
+      "type": "feature",
+      "status": "beta",
+      "plansAllowed": [],
+      "plansIncluded": [
+        "pro",
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 2400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #15 ; .agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "aiContentStrategist",
+      "label": "AI Content Strategist",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 3400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #(module « SEO Content Decay Radar » ; clé V1 AI Content Strategist conservée) ; message propriétaire 2026-11-21 19:39 (conflit de clé à résoudre sans mélanger les droits) ; commit 690b4d4f (2026-11-21)"
+    },
+    {
+      "key": "seoContentDecayRadar",
+      "label": "SEO Content Decay Radar",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1200,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "PR #183 (6b6840e8, 2026-10-18) ; docs/beta2-addon-matrix.md #14 ; addon-v1-testing-boundary.md (module SEO Content Decay Radar des 16) ; message propriétaire 2026-11-21 19:39 (clé distincte) ; commit 690b4d4f (2026-11-21)"
+    },
+    {
+      "key": "seoChangeImpact",
+      "label": "SEO Change Impact",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1500,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #21 ; ajout commit 0a231325 (2026-10-24), prix 15 €"
+    },
+    {
+      "key": "agencyPortfolioPriorities",
+      "label": "Agency Portfolio Priorities",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #22 ; ajout commit 712185fe (2026-10-24), prix 19 €"
+    },
+    {
+      "key": "technicalSeoFixVerification",
+      "label": "Technical SEO Fix Verification",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #23 ; ajout commit 7ef792a9 (2026-10-24), prix 19 €"
+    },
+    {
+      "key": "organicCampaignTracker",
+      "label": "Organic Campaign Tracker",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1200,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #24 ; ajout commit b7f0b685 (2026-10-24), prix 12 €"
+    },
+    {
+      "key": "gbpSlots10",
+      "label": "+10 Emplacements GBP",
+      "type": "capacity",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message propriétaire 2026-11-21 21:20 (PR #525 : masquage temporaire, aucune définition supprimée) ; commit f5ac6cda (2026-10-24, retrait des ventes)"
+    },
+    {
+      "key": "gbpPerformanceLeads",
+      "label": "GBP Performance & Leads",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1500,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #17 ; ajout PR #269 (4f6517c8, 2026-10-23), prix 15 €"
+    },
+    {
+      "key": "localLandingOpportunities",
+      "label": "Local Landing Opportunities",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1500,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #19 ; ajout commit 681c77cf (2026-10-23), prix 15 €"
+    },
+    {
+      "key": "aiGbpPosting",
+      "label": "AI GBP Posting",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 2900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #1 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "reviewIntelligence",
+      "label": "Review Intelligence",
+      "type": "feature",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message propriétaire 2026-11-21 21:20 (PR #525 : masquage temporaire) ; commit f5ac6cda (2026-10-24)"
+    },
+    {
+      "key": "localDominationMaps",
+      "label": "Local Domination Maps",
+      "type": "feature",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 2400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; messages propriétaire 2026-11-21 21:20 (certification TEST) et 2026-11-24 15:59 (remise en vente) ; PR #540/#542"
+    },
+    {
+      "key": "localPresenceOptimizer",
+      "label": "Local Presence Optimizer",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #18 ; ajout PR #271 (6556dc3a, 2026-10-23), prix 9 €"
+    },
+    {
+      "key": "aiCro",
+      "label": "AI CRO Strategist",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 3400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #12 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "conversionOpportunityEngine",
+      "label": "Conversion Opportunity Engine",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1200,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (huit remplaçants approuvés avec prix cibles par le propriétaire) ; docs/beta2-addon-matrix.md #20 ; ajout commit c1d4fe87 (2026-10-24), prix 12 €"
+    },
+    {
+      "key": "behavioralAI",
+      "label": "Behavioral AI",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 4400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #2 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "revenueLeak",
+      "label": "Revenue Leak AI",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 2900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #3 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "abTestingAI",
+      "label": "AB Testing IA",
+      "type": "feature",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 2400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; commit f5ac6cda (2026-10-24, huit add-ons remplacés retirés des ventes)"
+    },
+    {
+      "key": "whiteLabel",
+      "label": "White-Label Exports",
+      "type": "feature",
+      "status": "available",
+      "plansAllowed": [],
+      "plansIncluded": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 1700,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "agencyPacks",
+      "label": "Agency Reporting Packs",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 4900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #16 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; coming_soon jusqu'à certification complète (addon-v1-testing-boundary.md)"
+    },
+    {
+      "key": "aiExecutiveReport",
+      "label": "AI Executive Reporting",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 2400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #4 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "aiForecasting",
+      "label": "AI Forecasting Engine",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 3900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #5 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "marketIntelligence",
+      "label": "AI Market Intelligence",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 4900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #6 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "aiWorkflows",
+      "label": "AI Automation Workflows",
+      "type": "feature",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 3400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; commit f5ac6cda (2026-10-24, retiré des ventes)"
+    },
+    {
+      "key": "extraSeats",
+      "label": "+5 Sièges",
+      "type": "seats",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 3500,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (packs/sièges à conserver) ; Stripe TEST 35 €"
+    },
+    {
+      "key": "enterprisePermissions",
+      "label": "Enterprise Permissions",
+      "type": "feature",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [
+        "pro",
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; commit f5ac6cda (retiré des ventes, droit de plan conservé)"
+    },
+    {
+      "key": "retention90d",
+      "label": "Rétention 90 jours",
+      "type": "retention",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [
+        "pro",
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (rétention à conserver)"
+    },
+    {
+      "key": "retention365d",
+      "label": "Rétention 365 jours",
+      "type": "retention",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; inclus Ultra (billing-addon-included-matrix.md) ; message 2026-11-24 18:00 (rétention à conserver)"
+    },
+    {
+      "key": "advancedWebhooks",
+      "label": "Webhooks Avancés",
+      "type": "feature",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [
+        "pro",
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 1400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; commit f5ac6cda (retiré des ventes, droit de plan conservé)"
+    },
+    {
+      "key": "zapierIntegration",
+      "label": "Zapier / Make",
+      "type": "feature",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; commit f5ac6cda (2026-10-24, retiré des ventes) ; messages propriétaire 2026-11-21 21:20 et 2026-11-24 15:59 (remise en vente) ; PR #524/#540/#542"
+    },
+    {
+      "key": "crmIntegration",
+      "label": "Intégration CRM",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 2900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #7 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire)"
+    },
+    {
+      "key": "customDomain",
+      "label": "Custom Domain",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [
+        "ultra"
+      ],
+      "price": {
+        "amountMinor": 900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (six add-ons protégés + Custom Domain conservés) ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; inclus Ultra"
+    },
+    {
+      "key": "ssoEnterprise",
+      "label": "SSO Enterprise",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 4900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; addon-v1-testing-boundary.md (« Keep ssoEnterprise in the catalogue as unavailable »)"
+    },
+    {
+      "key": "aiWorkspaceLaunch",
+      "label": "AI Workspace Launch",
+      "type": "feature",
+      "status": "coming_soon",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 4900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": ".agents/memory/addon-v1-testing-boundary.md (liste définitive des 16 modules à améliorer, fournie par le propriétaire) ; message propriétaire 2026-11-12 14:07 ; docs/beta2-addon-matrix.md #13 ; V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message propriétaire 2026-11-12 14:07 (liste des chantiers historiques) et 2026-11-21 13:57 (divergence de prix 49 €/15 €) ; Stripe : aucun produit TEST/LIVE créé"
+    },
+    {
+      "key": "prioritySupport",
+      "label": "Support Prioritaire",
+      "type": "feature",
+      "status": "removed",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 2900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": false,
+      "inBranch": true,
+      "source": "V1 (commit 4757c0a3) ; RETIRÉ : commit bd1e06cf (2026-08-23, « retire prioritySupport »), REMOVED_ADDONS, fonction non implémentée"
+    },
+    {
+      "key": "auditsPack200",
+      "label": "Pack audits +200",
+      "type": "capacity",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1200,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message propriétaire 2026-11-21 21:20 (PR #524 approuvée : quatre packs de capacité) ; message 2026-11-24 18:00 (conserver packs de capacité, crédits IA, rétention, stockage)",
+      "validatedTarget": "available",
+      "deviationReason": "Retirées des ventes sur Test-Replit par le QA du 2026-10-29 (commit 1adb05aa) ; PR #524 (2026-11-21) valide leur vente sur Flowpoint. Divergence documentée, à décider par le propriétaire."
+    },
+    {
+      "key": "auditsPack1000",
+      "label": "Pack audits +1 000",
+      "type": "capacity",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 3900,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message propriétaire 2026-11-21 21:20 (PR #524 approuvée : quatre packs de capacité) ; message 2026-11-24 18:00 (conserver packs de capacité, crédits IA, rétention, stockage)",
+      "validatedTarget": "available",
+      "deviationReason": "Retirées des ventes sur Test-Replit par le QA du 2026-10-29 (commit 1adb05aa) ; PR #524 (2026-11-21) valide leur vente sur Flowpoint. Divergence documentée, à décider par le propriétaire."
+    },
+    {
+      "key": "pdfPack200",
+      "label": "Pack PDF +200",
+      "type": "capacity",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1200,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message propriétaire 2026-11-21 21:20 (PR #524 approuvée : quatre packs de capacité) ; message 2026-11-24 18:00 (conserver packs de capacité, crédits IA, rétention, stockage)",
+      "validatedTarget": "available",
+      "deviationReason": "Retirées des ventes sur Test-Replit par le QA du 2026-10-29 (commit 1adb05aa) ; PR #524 (2026-11-21) valide leur vente sur Flowpoint. Divergence documentée, à décider par le propriétaire."
+    },
+    {
+      "key": "exportsPack1000",
+      "label": "Pack exports +1 000",
+      "type": "capacity",
+      "status": "retired",
+      "plansAllowed": [],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1400,
+        "currency": "EUR",
+        "interval": "month"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message propriétaire 2026-11-21 21:20 (PR #524 approuvée : quatre packs de capacité) ; message 2026-11-24 18:00 (conserver packs de capacité, crédits IA, rétention, stockage)",
+      "validatedTarget": "available",
+      "deviationReason": "Retirées des ventes sur Test-Replit par le QA du 2026-10-29 (commit 1adb05aa) ; PR #524 (2026-11-21) valide leur vente sur Flowpoint. Divergence documentée, à décider par le propriétaire."
+    },
+    {
+      "key": "aiCreditsPack50k",
+      "label": "+50 000 crédits IA",
+      "type": "ai-credits",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 400,
+        "currency": "EUR",
+        "interval": "one_time"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (crédits IA à conserver) ; Stripe TEST 4 € (credits=50000)"
+    },
+    {
+      "key": "aiCreditsPack200k",
+      "label": "+200 000 crédits IA",
+      "type": "ai-credits",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 900,
+        "currency": "EUR",
+        "interval": "one_time"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (crédits IA à conserver) ; Stripe TEST 9 € (credits=200000)"
+    },
+    {
+      "key": "aiCreditsPack500k",
+      "label": "+500 000 crédits IA",
+      "type": "ai-credits",
+      "status": "available",
+      "plansAllowed": [
+        "standard",
+        "pro",
+        "ultra"
+      ],
+      "plansIncluded": [],
+      "price": {
+        "amountMinor": 1900,
+        "currency": "EUR",
+        "interval": "one_time"
+      },
+      "quantity": true,
+      "inBranch": true,
+      "source": "V1 (40 clés) : commit 4757c0a3 (2026-08-13) ; .agents/memory/billing-addon-included-matrix.md (« FlowPoint V1 has 40 existing add-on keys », matrice confirmée par le propriétaire) ; message 2026-11-24 18:00 (crédits IA à conserver) ; Stripe TEST 19 € (credits=500000)"
+    }
+  ]
+}

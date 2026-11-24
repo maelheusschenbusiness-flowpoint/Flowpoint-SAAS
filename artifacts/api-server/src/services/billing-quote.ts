@@ -3,6 +3,7 @@ import {
   PLAN_DEFINITIONS,
   PLAN_INCLUDED_ADDONS,
   COMING_SOON_ADDONS,
+  VALIDATION_REQUIRED_ADDONS,
   REMOVED_ADDONS,
   RETIRED_ADDONS,
   isPlanAllowedAddon,
@@ -163,6 +164,8 @@ export function createBillingQuote(selection: BillingSelection): BillingQuote {
     if (REMOVED_ADDONS.has(key))      throw new Error("ADDON_REMOVED");
     if (RETIRED_ADDONS.has(key))     throw new Error("ADDON_RETIRED");
     if (COMING_SOON_ADDONS.has(key))  throw new Error("ADDON_COMING_SOON");
+    // Défense en profondeur : les routes rejettent déjà ces clés, mais le devis est le chemin unique.
+    if (VALIDATION_REQUIRED_ADDONS.has(key)) throw new Error("ADDON_VALIDATION_REQUIRED");
     const definition = ADDON_DEFINITIONS[key];
     if (!definition) throw new Error("UNKNOWN_OR_UNBILLABLE_ADDON");
     const includedInPlan = included.has(key);
