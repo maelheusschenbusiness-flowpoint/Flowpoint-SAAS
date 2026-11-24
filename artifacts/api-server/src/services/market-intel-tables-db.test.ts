@@ -99,7 +99,7 @@ describe("Market Intelligence : tables additives", () => {
       try {
         await c.query("SET LOCAL ROLE app_user");
         await c.query("SELECT set_config('app.current_org_id', $1, true)", [ORG_A]);
-        const r = await c.query(`SELECT org_id FROM ai_market_reports WHERE org_id = ANY($1)`, [[ORG_A, ORG_B]]);
+        const r = await c.query(`SELECT DISTINCT org_id FROM ai_market_reports WHERE org_id = ANY($1)`, [[ORG_A, ORG_B]]);
         expect(r.rows.map(x => x.org_id)).toEqual([ORG_A]);
         await expect(c.query(`INSERT INTO ai_market_reports (id, org_id, title) VALUES ('x', $1, 'x')`, [ORG_B])).rejects.toThrow(/row-level security/);
       } finally { await c.query("ROLLBACK"); }
