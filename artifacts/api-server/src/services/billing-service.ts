@@ -96,7 +96,6 @@ const _ADDON_PRESENTATION: Record<string, { icon: string; unit: string }> = {
   // ── Enterprise ─────────────────────────────────────────────────────────────
   customDomain:          { icon: "🌐", unit: "domaine personnalisé"  },
   ssoEnterprise:         { icon: "🔑", unit: "SSO Enterprise — à venir" },
-  aiWorkspaceLaunch:     { icon: "🎯", unit: "lancement IA"          },
   // ── Packs audits / exports ─────────────────────────────────────────────────
   auditsPack200:         { icon: "🔍", unit: "+200 audits"           },
   auditsPack1000:        { icon: "🔍", unit: "+1 000 audits"         },

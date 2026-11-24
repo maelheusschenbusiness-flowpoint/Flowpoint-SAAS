@@ -227,7 +227,6 @@ export const ADDON_TEST_PRICE_ENV_VARS: Record<string, readonly string[]> = {
   agencyPacks: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PACKS"],
   crmIntegration: ["STRIPE_TEST_PRICE_ID_ADDON_CRM"],
   ssoEnterprise: ["STRIPE_TEST_PRICE_ID_ADDON_SSO"],
-  aiWorkspaceLaunch: ["STRIPE_TEST_PRICE_ID_ADDON_AI_WORKSPACE_LAUNCH"],
 };
 
 /** Read-only Stripe TEST catalog verification; never used with LIVE keys. */
@@ -396,7 +395,6 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   // ── Enterprise ─────────────────────────────────────────────────────────────
   customDomain:         process.env["STRIPE_PRICE_ID_CUSTOM_DOMAIN"]            ?? "price_1T6AZ39eqtbj6iPB93TgRJvI",
   ssoEnterprise:        process.env["STRIPE_PRICE_ID_SSO_ENTERPRISE"]           ?? "price_1TYpSc9eqtbj6iPBm2SuIBkS",
-  aiWorkspaceLaunch:    process.env["STRIPE_PRICE_ID_AI_WORKSPACE_LAUNCH"]      ?? "price_1TYpUj9eqtbj6iPBhXpzUjTH",
 
   // ── Support ────────────────────────────────────────────────────────────────
   prioritySupport:      process.env["STRIPE_PRICE_ID_PRIORITY_SUPPORT"]         ?? "price_1T6AXP9eqtbj6iPBVSbenAbR",
@@ -507,12 +505,19 @@ export const FLAG_ADDONS = new Set([
   "enterprisePermissions",
   "retention90d","retention365d",
   "advancedWebhooks","zapierIntegration","crmIntegration",
-  "customDomain","ssoEnterprise","aiWorkspaceLaunch",
+  "customDomain","ssoEnterprise",
+  // NOTE: "aiWorkspaceLaunch" removed (owner arbitration 24/11/2026) — no entitlement flag
   // NOTE: "prioritySupport" removed — feature not implemented, no commercial exposure
 ]);
 
-/** Legacy keys retained only for historical Stripe/DB reconciliation. */
-export const REMOVED_ADDONS = new Set<string>(["prioritySupport"]);
+/**
+ * Legacy keys retained only for historical Stripe/DB reconciliation.
+ * "aiWorkspaceLaunch" : retire definitivement de l'offre commerciale (arbitrage du
+ * proprietaire, 24/11/2026). La definition reste pour que la cle soit reconnue comme
+ * retiree (activation -> 410, devis -> ADDON_REMOVED) ; aucun prix, aucun plan, aucune
+ * carte, aucune inclusion. Ne PAS la remettre dans COMING_SOON_ADDONS ni dans un plan.
+ */
+export const REMOVED_ADDONS = new Set<string>(["prioritySupport", "aiWorkspaceLaunch"]);
 
 /**
  * Retired products cannot be newly purchased, but remain recognized by the
@@ -594,11 +599,6 @@ export const COMING_SOON_ADDONS = new Set<string>([
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
   // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
-
-  // aiWorkspaceLaunch: POST + GET routes enforce requireAddon; AI output is
-  // validated and the route refuses to persist generic fallback content.
-  // Still not commercially released pending functional certification.
-  "aiWorkspaceLaunch",
 
   // Custom Domain is test-beta only when the Render test target is configured.
   // Otherwise it remains unavailable everywhere.
@@ -833,7 +833,7 @@ const _PRO_EXCLUSIVE = new Set<string>([
 ]);
 
 const _ULTRA_EXCLUSIVE = new Set<string>([
-  // NOTE: agencyPacks, ssoEnterprise, aiWorkspaceLaunch are COMING_SOON in LIVE.
+  // NOTE: agencyPacks, ssoEnterprise are COMING_SOON in LIVE. aiWorkspaceLaunch is REMOVED.
   // A dedicated agencyPacks TEST price may open it for isolated QA only.
   "retention365d",
 ]);

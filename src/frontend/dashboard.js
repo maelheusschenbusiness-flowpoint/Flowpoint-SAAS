@@ -10933,7 +10933,6 @@ function renderBilling() {
       // ── Enterprise ──
       { key:'customDomain', cat:'Ultra', name:'Custom Domain',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Ultra inclus', roi:'portal.votreagence.fr', desc:'Bêta sur Stripe TEST, réservée aux organisations Ultra autorisées.', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Preuve de propriété DNS TXT avant provisionnement','Provisionnement Render, HTTPS et routage isolé en certification Beta'] },
       { key:'ssoEnterprise', cat:'Ultra', name:'SSO Enterprise', icon:'🔑', color:'#6366f1', active:!!(me.addons?.ssoEnterprise), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Aucun fournisseur SSO opérationnel; les flux de connexion SAML et OIDC ne sont pas encore disponibles.', features:['Bientôt disponible'] },
-      { key:'aiWorkspaceLaunch', cat:'Ultra', name:'AI Workspace Launch', icon:'🤖', color:'#6366f1', active:!!(me.addons?.aiWorkspaceLaunch), availability:'coming_soon', tag:'Bientôt disponible', roi:'Bientôt disponible', desc:'Génère une stratégie et des missions depuis le profil du workspace. Les rapports planifiés exigent aussi AI Workflows et sont enregistrés sans envoi email ou Slack.', features:['Bientôt disponible'], wizardFn:'openAIWorkspaceLaunch' },
     ];
 
     // ── Money and bundling are injected from the server catalogue; this file

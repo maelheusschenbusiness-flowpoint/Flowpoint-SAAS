@@ -29,8 +29,8 @@ function monitor(id: string, regions: string[], status = "operational", uptime?:
 
 describe("global monitoring regional coverage summary", () => {
   it("keeps the selected batch within proposed prices and unavailable before approval", () => {
-    const selected = ["globalMonitoring", "agencyPacks", "aiWorkspaceLaunch"];
-    expect(selected.map(key => ADDON_DEFINITIONS[key].priceEur)).toEqual([49, 49, 49]);
+    const selected = ["globalMonitoring", "agencyPacks"];
+    expect(selected.map(key => ADDON_DEFINITIONS[key].priceEur)).toEqual([49, 49]);
     for (const key of selected) {
       expect(COMING_SOON_ADDONS.has(key)).toBe(true);
       expect(getAddonAvailability(key)).toBe("coming_soon");

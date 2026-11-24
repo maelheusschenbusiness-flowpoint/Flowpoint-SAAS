@@ -274,7 +274,7 @@ describe("add-on catalogue UI commercial gates", () => {
       addon.key,
       addon,
     ]));
-    expect(entries.size).toBe(36);
+    expect(entries.size).toBe(35);
     const billingPlansById = new Map(
       ADDON_CATALOG.map(addon => [addon.id, addon.allowedPlans]),
     );
@@ -378,7 +378,7 @@ describe("add-on catalogue UI commercial gates", () => {
     }
 
     const publicBillingIds = new Set(ADDON_CATALOG.map(addon => addon.id));
-    expect(ADDON_CATALOG).toHaveLength(36);
+    expect(ADDON_CATALOG).toHaveLength(35);
     for (const key of retired) expect(publicBillingIds.has(key)).toBe(false);
     for (const [key] of replacements) expect(publicBillingIds.has(key)).toBe(true);
   });
@@ -387,7 +387,7 @@ describe("add-on catalogue UI commercial gates", () => {
     const match = dashboard.match(/const allAddons = \[([\s\S]*?)\n\s*\];/);
     expect(match, "add-on card definitions should be present").not.toBeNull();
     const keys = [...(match?.[1] ?? "").matchAll(/key:\s*'([^']+)'/g)].map(item => item[1]);
-    expect(keys).toHaveLength(33);
+    expect(keys).toHaveLength(32);
     expect(new Set(keys).size).toBe(keys.length);
     expect(exportedDashboard).toBe(dashboard);
     const monthlyCatalogKeys = Object.entries(ADDON_DEFINITIONS)
