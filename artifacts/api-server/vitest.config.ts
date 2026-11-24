@@ -74,6 +74,8 @@ export default defineConfig({
       "src/lib/addon-test-price-overrides.test.ts",
       // gsc_keyword_data creee hors du bloc v3 (absente de la production)
       "src/services/gsc-keyword-data-schema-db.test.ts",
+      // Local Domination Maps : local_opportunities / local_visibility_scores (absentes)
+      "src/services/local-maps-tables-db.test.ts",
       // [lot1:organicCampaignTracker]
       "src/routes/organic-campaign-tracker.test.ts",
       "src/services/organic-campaign-tracker.test.ts",
@@ -199,6 +201,8 @@ export default defineConfig({
       "src/services/stripe-factory-securite.test.ts",
       "src/lib/addon-masquage-temporaire.test.ts",
       "src/routes/integrations-connections-guard.test.ts",
+      // automation_integrations.provider NOT NULL sans defaut : INSERT explicite + DEFAULT additif
+      "src/services/integrations-provider-db.test.ts",
       "src/tests/auth-login-verify-stripe-mode.test.ts",
       // P0 webhook race: customer.subscription.* before finalize-checkout commits the UUID org
       "src/tests/stripe-webhook-pending-activation.test.ts",
