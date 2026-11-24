@@ -57,13 +57,15 @@ describe("getForecastData — stored forecasts", () => {
     siteUrl: SITE,
     forecasts: [],
     available: false,
+    conversionsAvailable: false,
+    revenueAvailable: false,
     source: "none",
     reason: "Données historiques insuffisantes pour générer une prévision.",
     summary: {
       expectedTrafficIn30d: 0,
       expectedTrafficIn90d: 0,
-      expectedConversionsIn30d: 0,
-      expectedRevenueIn90d: 0,
+      expectedConversionsIn30d: null,
+      expectedRevenueIn90d: null,
       confidenceScore: 0,
       growthScenarios: { pessimistic: 0, realistic: 0, optimistic: 0 },
     },
@@ -116,6 +118,32 @@ describe("getForecastData — stored forecasts", () => {
       expect(v).toBe(0);
       expect(Number.isFinite(v)).toBe(true);
     }
+  });
+
+  it("never presents GSC-sourced conversions/revenue as measured zeros: null + availability flags false", async () => {
+    // rows deliberately carry non-null stored values (1 / 10): they must not be trusted without GA4
+    mockQuery.mockResolvedValueOnce({ rows: series(60, () => 100) });
+    const data = await getForecastData({ orgId: ORG, siteUrl: SITE });
+    expect(data.available).toBe(true);
+    expect(data.conversionsAvailable).toBe(false);
+    expect(data.revenueAvailable).toBe(false);
+    expect(data.summary.expectedConversionsIn30d).toBeNull();
+    expect(data.summary.expectedRevenueIn90d).toBeNull();
+    expect(data.forecasts.every(p => p.predictedConversions === null && p.predictedRevenue === null)).toBe(true);
+    // traffic stays a real number
+    expect(data.summary.expectedTrafficIn30d).toBe(3000);
+    const wire = JSON.parse(JSON.stringify(data));
+    expect(wire.summary.expectedConversionsIn30d).toBeNull();
+    expect(wire.forecasts[0].predictedRevenue).toBeNull();
+  });
+
+  it("the empty state never reports conversions/revenue as 0", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const data = await getForecastData({ orgId: ORG, siteUrl: SITE });
+    expect(data.conversionsAvailable).toBe(false);
+    expect(data.revenueAvailable).toBe(false);
+    expect(data.summary.expectedConversionsIn30d).toBeNull();
+    expect(data.summary.expectedRevenueIn90d).toBeNull();
   });
 
   it("ignores rows left over from an earlier generation", async () => {
@@ -201,6 +229,18 @@ describe("getForecastData — stored forecasts", () => {
       expect(begin).toBeLessThan(firstInsert);
       expect(lastInsert).toBeLessThan(commit);
       expect(calls).not.toContain("ROLLBACK");
+    });
+
+    it("generateForecasts exposes null conversions/revenue (storage keeps 0 in the NOT NULL columns)", async () => {
+      setupGenerate();
+      const data = await generateForecasts(ORG_UUID, LONG_SITE);
+      expect(data.conversionsAvailable).toBe(false);
+      expect(data.revenueAvailable).toBe(false);
+      expect(data.summary.expectedConversionsIn30d).toBeNull();
+      expect(data.summary.expectedRevenueIn90d).toBeNull();
+      const inserts = mockQuery.mock.calls.filter(c => /INSERT INTO seo_forecasts/.test(String(c[0])));
+      expect(inserts.length).toBe(270);
+      expect(String(inserts[0]![0])).toMatch(/\$5,0,0,/); // 0 stored (NOT NULL DEFAULT 0), never read back as a measure
     });
 
     it("rolls back everything when one insert fails", async () => {

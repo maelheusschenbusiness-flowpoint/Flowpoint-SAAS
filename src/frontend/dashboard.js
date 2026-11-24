@@ -19586,6 +19586,13 @@ function bindGlobalEvents() {
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    "Données GA4 requises": "GA4 data required",
+    "Données de revenu requises": "Revenue data required",
+    "Conv. prévue": "Forecast conv.",
+    "Revenue prévu": "Forecast revenue",
+    "30 jours · GA4": "30 days · GA4",
+    "90 jours · GA4": "90 days · GA4",
+    "Revenu": "Revenue",
     "&#128508; Domination territoriale — 2 zones dominées · 3 à conquérir": "&#128508; Territorial domination — 2 areas dominated · 3 to conquer",
     "&#8593; +1 ce mois · Score 74/100": "&#8593; +1 this month · Score 74/100",
     "' : 'Sur la base d'une estimation par défaut de": "' : 'Based on a default estimate of",
@@ -21158,7 +21165,7 @@ function bindGlobalEvents() {
     "🔄 Réessayer": "🔄 Retry",
     "Retirer": "Quitar",
     "Voir tous": "Ver todos",
-    "Indisponible": "No disponible",
+    "Indisponible": "Unavailable",
     "Score indisponible": "Puntuación no disponible",
     "Indisponible — relancez une analyse": "No disponible — vuelva a ejecutar un análisis",
     "Points à vérifier": "Puntos a verificar",
@@ -21463,6 +21470,13 @@ function bindGlobalEvents() {
   var FP_I18N = {
     en: FP_I18N_EN,
     es: {
+    "Données GA4 requises": "Se requieren datos de GA4",
+    "Données de revenu requises": "Se requieren datos de ingresos",
+    "Conv. prévue": "Conv. prevista",
+    "Revenue prévu": "Ingresos previstos",
+    "30 jours · GA4": "30 días · GA4",
+    "90 jours · GA4": "90 días · GA4",
+    "Revenu": "Ingresos",
     "Sites critiques à corriger": "Sitios críticos a corregir",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Algunos sitios tienen una puntuación SEO inferior a 50/100. Corrige primero las etiquetas faltantes y la velocidad móvil.",
     "À prioriser": "A priorizar",
@@ -21618,7 +21632,7 @@ function bindGlobalEvents() {
     "Analyser sentiment": "Analizar sentimiento",
     "Retirer": "Verwijderen",
     "Voir tous": "Alles bekijken",
-    "Indisponible": "Niet beschikbaar",
+    "Indisponible": "No disponible",
     "Score indisponible": "Score niet beschikbaar",
     "Indisponible — relancez une analyse": "Niet beschikbaar — voer een nieuwe analyse uit",
     "Points à vérifier": "Te controleren punten",
@@ -24424,6 +24438,13 @@ function bindGlobalEvents() {
     "Agressive": "Agresiva",
     },
     de: {
+    "Données GA4 requises": "GA4-Daten erforderlich",
+    "Données de revenu requises": "Umsatzdaten erforderlich",
+    "Conv. prévue": "Prognost. Konv.",
+    "Revenue prévu": "Prognost. Umsatz",
+    "30 jours · GA4": "30 Tage · GA4",
+    "90 jours · GA4": "90 Tage · GA4",
+    "Revenu": "Umsatz",
     "Sites critiques à corriger": "Kritische Websites zu beheben",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Einige Websites haben einen SEO-Score unter 50/100. Beheben Sie zuerst fehlende Tags und die mobile Geschwindigkeit.",
     "À prioriser": "Zu priorisieren",
@@ -27358,6 +27379,13 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiv",
     },
     it: {
+    "Données GA4 requises": "Dati GA4 necessari",
+    "Données de revenu requises": "Dati sui ricavi necessari",
+    "Conv. prévue": "Conv. prevista",
+    "Revenue prévu": "Ricavi previsti",
+    "30 jours · GA4": "30 giorni · GA4",
+    "90 jours · GA4": "90 giorni · GA4",
+    "Revenu": "Ricavi",
     "Sites critiques à corriger": "Siti critici da correggere",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Alcuni siti hanno un punteggio SEO inferiore a 50/100. Correggi prima i tag mancanti e la velocità mobile.",
     "À prioriser": "Da prioritizzare",
@@ -30311,6 +30339,13 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiva",
     },
     pt: {
+    "Données GA4 requises": "Dados do GA4 necessários",
+    "Données de revenu requises": "Dados de receita necessários",
+    "Conv. prévue": "Conv. prevista",
+    "Revenue prévu": "Receita prevista",
+    "30 jours · GA4": "30 dias · GA4",
+    "90 jours · GA4": "90 dias · GA4",
+    "Revenu": "Receita",
     "Sites critiques à corriger": "Sites críticos a corrigir",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Alguns sites têm uma pontuação SEO inferior a 50/100. Corrija primeiro as tags em falta e a velocidade móvel.",
     "À prioriser": "A priorizar",
@@ -33245,6 +33280,13 @@ function bindGlobalEvents() {
     "Agressive": "Agressiva",
     },
     nl: {
+    "Données GA4 requises": "GA4-gegevens vereist",
+    "Données de revenu requises": "Omzetgegevens vereist",
+    "Conv. prévue": "Verwachte conv.",
+    "Revenue prévu": "Verwachte omzet",
+    "30 jours · GA4": "30 dagen · GA4",
+    "90 jours · GA4": "90 dagen · GA4",
+    "Revenu": "Omzet",
     "Sites critiques à corriger": "Kritieke sites om te herstellen",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Sommige sites hebben een SEO-score onder 50/100. Herstel eerst ontbrekende tags en mobiele snelheid.",
     "À prioriser": "Te prioriteren",
@@ -36179,6 +36221,13 @@ function bindGlobalEvents() {
     "Agressive": "Agressief",
     },
     pl: {
+    "Données GA4 requises": "Wymagane dane GA4",
+    "Données de revenu requises": "Wymagane dane o przychodach",
+    "Conv. prévue": "Prognoz. konw.",
+    "Revenue prévu": "Prognoz. przychód",
+    "30 jours · GA4": "30 dni · GA4",
+    "90 jours · GA4": "90 dni · GA4",
+    "Revenu": "Przychód",
     "Sites critiques à corriger": "Krytyczne witryny do naprawy",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Niektóre witryny mają wynik SEO poniżej 50/100. Najpierw popraw brakujące tagi i szybkość mobilną.",
     "À prioriser": "Do priorytetyzacji",
@@ -39113,6 +39162,13 @@ function bindGlobalEvents() {
     "Agressive": "Agresywny",
     },
     sv: {
+    "Données GA4 requises": "GA4-data krävs",
+    "Données de revenu requises": "Intäktsdata krävs",
+    "Conv. prévue": "Prognos. konv.",
+    "Revenue prévu": "Prognos. intäkter",
+    "30 jours · GA4": "30 dagar · GA4",
+    "90 jours · GA4": "90 dagar · GA4",
+    "Revenu": "Intäkter",
     "Sites critiques à corriger": "Kritiska webbplatser att åtgärda",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Vissa webbplatser har ett SEO-betyg under 50/100. Åtgärda saknade taggar och mobil hastighet först.",
     "À prioriser": "Att prioritera",
@@ -42047,6 +42103,13 @@ function bindGlobalEvents() {
     "Agressive": "Aggressiv",
     },
     ro: {
+    "Données GA4 requises": "Sunt necesare date GA4",
+    "Données de revenu requises": "Sunt necesare date privind veniturile",
+    "Conv. prévue": "Conv. estimată",
+    "Revenue prévu": "Venit estimat",
+    "30 jours · GA4": "30 de zile · GA4",
+    "90 jours · GA4": "90 de zile · GA4",
+    "Revenu": "Venit",
     "Sites critiques à corriger": "Site-uri critice de corectat",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Unele site-uri au un scor SEO sub 50/100. Corectați mai întâi etichetele lipsă și viteza pe mobil.",
     "À prioriser": "De prioritizat",
@@ -44981,6 +45044,13 @@ function bindGlobalEvents() {
     "Agressive": "Agresiv",
     },
     cs: {
+    "Données GA4 requises": "Jsou vyžadována data GA4",
+    "Données de revenu requises": "Jsou vyžadována data o příjmech",
+    "Conv. prévue": "Předp. konv.",
+    "Revenue prévu": "Předp. příjmy",
+    "30 jours · GA4": "30 dní · GA4",
+    "90 jours · GA4": "90 dní · GA4",
+    "Revenu": "Příjmy",
     "Sites critiques à corriger": "Kritické weby k opravě",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Některé weby mají SEO skóre pod 50/100. Nejprve opravte chybějící tagy a mobilní rychlost.",
     "À prioriser": "K prioritizaci",
@@ -59388,13 +59458,21 @@ function renderDataExplorer() {
     const _hasForecast = !!(_fcData?.available && _realistic.length);
     const fMonths = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => new Date(p.date).toLocaleDateString(getLocale(),{month:'short'})) : [];
     const fTraffic = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => Math.round(Number(p.predictedTraffic ?? p.predictedValue ?? 0))) : [];
-    const fConv = [];
-    const fRev = [];
+    // Conversions / revenu : mesures GA4 uniquement. Le serveur renvoie null + flag false sans GA4 : on affiche « Indisponible », jamais 0.
+    const _convOk = _fcData?.conversionsAvailable === true && _fcData?.summary?.expectedConversionsIn30d != null;
+    const _revOk  = _fcData?.revenueAvailable === true && _fcData?.summary?.expectedRevenueIn90d != null;
+    const _fcUnavail = fpT('Indisponible');
+    const _scenarioMetric = function(name, key, ok) {
+      if (!ok) return _fcUnavail;
+      const rows = _points.filter(p => p.scenario === name).slice(0, key === 'predictedRevenue' ? 90 : 30);
+      if (!rows.length || rows.some(p => p[key] == null)) return _fcUnavail;
+      return rows.reduce((sum, p) => sum + Number(p[key]), 0).toLocaleString(getLocale());
+    };
     const maxF = fTraffic.length ? Math.max(...fTraffic, 1) : 1;
     const scenarios = _hasForecast ? [
-      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#64748b', desc: 'Projection GSC basse' },
-      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#2563EB', desc: 'Tendance GSC observée' },
-      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#22c55e', desc: 'Projection GSC haute' },
+      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: _scenarioMetric('pessimistic','predictedConversions',_convOk), rev: _scenarioMetric('pessimistic','predictedRevenue',_revOk), color: '#64748b', desc: 'Projection GSC basse' },
+      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: _scenarioMetric('realistic','predictedConversions',_convOk), rev: _scenarioMetric('realistic','predictedRevenue',_revOk), color: '#2563EB', desc: 'Tendance GSC observée' },
+      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: _scenarioMetric('optimistic','predictedConversions',_convOk), rev: _scenarioMetric('optimistic','predictedRevenue',_revOk), color: '#22c55e', desc: 'Projection GSC haute' },
     ] : [];
     return `
       ${isUltra && _hasForecast
@@ -59410,8 +59488,8 @@ function renderDataExplorer() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Trafic projeté', _hasForecast ? _scenarioValue('realistic').toLocaleString(getLocale()) : '—', _hasForecast ? '90 jours · source GSC' : 'Données insuffisantes', 'neutral')}
-        ${statCard('Conversion', '—', 'Données GA4 requises', 'neutral')}
-        ${statCard('Revenu', '—', 'Données de revenu requises', 'neutral')}
+        ${statCard('Conversion', _convOk ? Number(_fcData.summary.expectedConversionsIn30d).toLocaleString(getLocale()) : _fcUnavail, _convOk ? '30 jours · GA4' : 'Données GA4 requises', 'neutral')}
+        ${statCard('Revenu', _revOk ? Number(_fcData.summary.expectedRevenueIn90d).toLocaleString(getLocale()) + ' €' : _fcUnavail, _revOk ? '90 jours · GA4' : 'Données de revenu requises', 'neutral')}
         ${statCard('Confiance', _hasForecast ? (_fcData.summary?.confidenceScore ?? '—') + '%' : '—', _hasForecast ? 'historique GSC' : 'Données insuffisantes', 'neutral')}
       </div>
 
@@ -59436,12 +59514,10 @@ function renderDataExplorer() {
           `).join('')}
         </div>
         <div style="display:flex;gap:12px;padding:10px;background:rgba(37,99,235,0.06);border-radius:8px">
-          ${[{label:'Conv. prévue',vals:fConv,unit:'%'},{label:'Revenue prévu',vals:fRev,unit:'€'}].map(f => `
+          ${[{label:'Conv. prévue',ok:_convOk,val:_convOk?Number(_fcData.summary.expectedConversionsIn30d).toLocaleString(getLocale()):''},{label:'Revenue prévu',ok:_revOk,val:_revOk?Number(_fcData.summary.expectedRevenueIn90d).toLocaleString(getLocale())+' €':''}].map(f => `
             <div style="flex:1">
               <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:4px">${f.label}</div>
-              <div style="display:flex;gap:4px">
-                ${f.vals.map((v, i) => `<div style="flex:1;text-align:center;font-size:9px;color:${i===f.vals.length-1?'#22c55e':'var(--fp-text-faint)'};font-weight:${i===f.vals.length-1?700:400}">${v}${f.unit}</div>`).join('')}
-              </div>
+              <div data-fc-metric="${f.ok ? 'value' : 'unavailable'}" style="font-size:11px;font-weight:700;color:${f.ok?'#22c55e':'var(--fp-text-faint)'}">${f.ok ? f.val : _fcUnavail}</div>
             </div>
           `).join('')}
         </div>

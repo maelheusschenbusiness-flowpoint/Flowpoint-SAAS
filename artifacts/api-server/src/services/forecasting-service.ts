@@ -5,24 +5,38 @@ export interface ForecastData {
   siteUrl: string;
   forecasts: ForecastPoint[];
   available: boolean;
+  /**
+   * Conversions / revenue ne sont mesures que par GA4. Sans GA4 (cas de toutes les previsions actuelles, issues de GSC),
+   * ils sont `null` + flag `false` : jamais un zero qui passerait pour une mesure.
+   */
+  conversionsAvailable: boolean;
+  revenueAvailable: boolean;
   source: "gsc" | "stored" | "none";
   reason?: string;
   summary: {
     expectedTrafficIn30d: number;
     expectedTrafficIn90d: number;
-    expectedConversionsIn30d: number;
-    expectedRevenueIn90d: number;
+    expectedConversionsIn30d: number | null;
+    expectedRevenueIn90d: number | null;
     confidenceScore: number;
     growthScenarios: { pessimistic: number; realistic: number; optimistic: number };
   };
   generatedAt: string;
 }
 
+/**
+ * Sources de lignes dont conversions/revenue sont MESURES (donnees GA4). Aucune pour l'instant : les lignes
+ * `source='gsc'` stockent 0 (colonnes NOT NULL DEFAULT 0, conservees pour ne pas migrer) qui ne signifie pas "mesure a zero".
+ * La disponibilite est donc derivee de la source, pas de la valeur stockee.
+ */
+const CONVERSION_MEASURED_SOURCES: readonly string[] = [];
+const REVENUE_MEASURED_SOURCES: readonly string[] = [];
+
 export interface ForecastPoint {
   date: string;
   predictedTraffic: number;
-  predictedConversions: number;
-  predictedRevenue: number;
+  predictedConversions: number | null;
+  predictedRevenue: number | null;
   confidence: number;
   scenario: "pessimistic" | "realistic" | "optimistic";
 }
@@ -31,13 +45,15 @@ const EMPTY_FORECAST: ForecastData = {
   siteUrl: "",
   forecasts: [],
   available: false,
+  conversionsAvailable: false,
+  revenueAvailable: false,
   source: "none",
   reason: "Données historiques insuffisantes pour générer une prévision.",
   summary: {
     expectedTrafficIn30d: 0,
     expectedTrafficIn90d: 0,
-    expectedConversionsIn30d: 0,
-    expectedRevenueIn90d: 0,
+    expectedConversionsIn30d: null,
+    expectedRevenueIn90d: null,
     confidenceScore: 0,
     growthScenarios: { pessimistic: 0, realistic: 0, optimistic: 0 },
   },
@@ -69,8 +85,10 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
         const forecasts: ForecastPoint[] = res.rows.map((r: Record<string, unknown>) => ({
           date: String(r["forecast_date"]),
           predictedTraffic: Number(r["predicted_traffic"] ?? 0),
-          predictedConversions: Number(r["predicted_conversions"] ?? 0),
-          predictedRevenue: Number(r["predicted_revenue"] ?? 0),
+          predictedConversions: CONVERSION_MEASURED_SOURCES.includes(String(r["source"] ?? ""))
+            && r["predicted_conversions"] != null ? Number(r["predicted_conversions"]) : null,
+          predictedRevenue: REVENUE_MEASURED_SOURCES.includes(String(r["source"] ?? ""))
+            && r["predicted_revenue"] != null ? Number(r["predicted_revenue"]) : null,
           confidence: Number(r["confidence"] ?? 75),
           scenario: String(r["scenario"] ?? "realistic") as ForecastPoint["scenario"],
         }));
@@ -93,16 +111,20 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
         const growthPct = realistic.length >= 60 && realTraffic30 > 0
           ? Math.round(((secondMonthTraffic - realTraffic30) / realTraffic30) * 100)
           : 0;
+        const conversionsAvailable = in30.length > 0 && in30.every(f => f.predictedConversions !== null);
+        const revenueAvailable = in90.length > 0 && in90.every(f => f.predictedRevenue !== null);
         return {
           siteUrl: url,
           forecasts: upcoming,
           available: realistic.length > 0,
+          conversionsAvailable,
+          revenueAvailable,
           source: "stored",
           summary: {
             expectedTrafficIn30d:     realTraffic30,
             expectedTrafficIn90d:     realTraffic90,
-            expectedConversionsIn30d: in30.reduce((s, f) => s + f.predictedConversions, 0),
-            expectedRevenueIn90d:     in90.reduce((s, f) => s + f.predictedRevenue, 0),
+            expectedConversionsIn30d: conversionsAvailable ? in30.reduce((s, f) => s + (f.predictedConversions ?? 0), 0) : null,
+            expectedRevenueIn90d:     revenueAvailable ? in90.reduce((s, f) => s + (f.predictedRevenue ?? 0), 0) : null,
             confidenceScore: Math.round(
               realistic.slice(0, 30).reduce((s, f) => s + f.confidence, 0) / Math.max(in30.length, 1)
             ),
@@ -167,7 +189,7 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
       for (const scenario of Object.keys(multipliers) as ForecastPoint["scenario"][]) {
         const traffic = Math.max(0, Math.round(baseline * Math.pow(1 + dailyTrend, day) * multipliers[scenario]));
         forecasts.push({ date: date.toISOString().slice(0, 10), predictedTraffic: traffic,
-          predictedConversions: 0, predictedRevenue: 0, confidence, scenario });
+          predictedConversions: null, predictedRevenue: null, confidence, scenario });
       }
     }
     // All-or-nothing: 270 rows written in one transaction. The id is a fixed-length hash of
