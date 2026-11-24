@@ -3,11 +3,11 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import { canWrite } from "../middlewares/requireRole.js";
 import {
   createHeatmap, getHeatmaps, getHeatmapDetail,
-  getMapsDashboard, generateAiLocalRecommendations,
+  getMapsDashboard, generateAiLocalRecommendations, startHeatmapScan, resolveDefaultBusinessName,
 } from "../services/local-maps-service.js";
 import { pool } from "@workspace/db";
 import { isDataForSEOConfigured, checkAndIncrementQuota, getGoogleMapsResults } from "../services/dataforseo-service.js";
-import { requireAddon } from "../middlewares/planGate.js";
+import { requireAddon, requireQuota } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -36,17 +36,55 @@ router.get("/local-maps/heatmaps/:id", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/local-maps/heatmaps", canWrite, async (req, res) => {
-  const { locationId, name, keyword, centerLat, centerLng, radiusKm, gridSize } = req.body as {
-    locationId?: string; name?: string; keyword?: string;
+// Plafond de heatmaps du plan (2 / 10 / 50) : compte les heatmaps de l'organisation.
+// Les heatmaps existantes restent consultables et re-scannables ; seule la CREATION est limitee.
+router.post("/local-maps/heatmaps", canWrite, requireQuota("heatmaps", async (orgId) => {
+  const r = await pool.query(`SELECT COUNT(*)::int AS n FROM local_heatmaps WHERE org_id=$1`, [orgId]);
+  return Number(r.rows[0]?.n ?? 0);
+}), async (req, res) => {
+  const { locationId, name, keyword, businessName, centerLat, centerLng, radiusKm, gridSize } = req.body as {
+    locationId?: string; name?: string; keyword?: string; businessName?: string;
     centerLat?: number; centerLng?: number; radiusKm?: number; gridSize?: number;
   };
-  if (!name || !keyword || centerLat === undefined || centerLng === undefined) {
-    res.status(400).json({ error: "name, keyword, centerLat, centerLng requis" }); return;
+  const resolvedBusinessName = businessName?.trim() || await resolveDefaultBusinessName(org(req)) || "";
+  const radius = radiusKm ?? 5;
+  const grid = gridSize ?? 7;
+  if (!name?.trim() || name.length > 120 || !keyword?.trim() || keyword.length > 180 ||
+      !resolvedBusinessName || resolvedBusinessName.length > 120 ||
+      !Number.isFinite(centerLat) || centerLat! < -90 || centerLat! > 90 ||
+      !Number.isFinite(centerLng) || centerLng! < -180 || centerLng! > 180 ||
+      ![2, 5, 10, 20].includes(radius) || ![5, 7, 9].includes(grid)) {
+    res.status(400).json({ error: "Nom, établissement (nom de la fiche Google Business ou champ businessName), mot-clé, coordonnées, rayon ou grille invalide." }); return;
   }
   try {
-    const heatmap = await createHeatmap(org(req), { locationId, name, keyword, centerLat, centerLng, radiusKm, gridSize });
-    res.status(201).json({ ok: true, heatmap });
+    const orgId = org(req);
+    if (!await isDataForSEOConfigured(orgId)) {
+      res.status(503).json({ error: "Le fournisseur de mesures locales (DataForSEO) n’est pas configuré : aucune position ne peut être mesurée.", code: "PROVIDER_NOT_CONFIGURED" }); return;
+    }
+    const heatmap = await createHeatmap(orgId, {
+      locationId, name: name.trim(), keyword: keyword.trim(), businessName: resolvedBusinessName,
+      centerLat: centerLat!, centerLng: centerLng!, radiusKm: radius, gridSize: grid,
+    });
+    const scanStarted = await startHeatmapScan(orgId, heatmap.id);
+    res.status(202).json({ ok: true, scanStarted, status: scanStarted ? "running" : "pending", heatmap });
+  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+});
+
+router.post("/local-maps/heatmaps/:id/scan", canWrite, async (req, res) => {
+  const orgId = org(req);
+  try {
+    const heatmapId = String(req.params.id);
+    const heatmap = await getHeatmapDetail(orgId, heatmapId);
+    if (!heatmap) { res.status(404).json({ error: "Heatmap introuvable." }); return; }
+    if (!await isDataForSEOConfigured(orgId)) {
+      res.status(503).json({ error: "Le fournisseur de mesures locales (DataForSEO) n’est pas configuré : aucune position ne peut être mesurée.", code: "PROVIDER_NOT_CONFIGURED" }); return;
+    }
+    const started = await startHeatmapScan(orgId, heatmapId);
+    if (!started) {
+      res.status(409).json({ error: "Cette heatmap est déjà en cours d’analyse ou ne peut pas être relancée." });
+      return;
+    }
+    res.status(202).json({ ok: true, status: "running" });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
@@ -157,8 +195,8 @@ router.get("/local-maps/visibility-scores", async (req, res) => {
 
 router.post("/local-maps/ai-recommendations", canWrite, async (req, res) => {
   try {
-    const summary = await generateAiLocalRecommendations(org(req));
-    res.json({ ok: true, summary });
+    const result = await generateAiLocalRecommendations(org(req));
+    res.json({ ok: true, status: result.status, message: result.message, summary: result.recommendations.map(r => `${r.title} — ${r.description}`).join("\n") || result.message || "", recommendations: result.recommendations });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
