@@ -549,7 +549,6 @@
     "Synchronisez vos données SEO dans HubSpot, Salesforce ou Pipedrive. Enrichissez vos fiches contacts et déclenchez des actions commerciales sur signal SEO.": "Sync your SEO data into HubSpot, Salesforce or Pipedrive. Enrich your contact records and trigger sales actions on SEO signals.",
     "Hébergez votre portail FlowPoint sur votre propre domaine (analyse.votreagence.com). Renforce la crédibilité client avec une image 100% professionnelle.": "Host your FlowPoint portal on your own domain (analysis.youragency.com). Strengthens client credibility with a 100% professional image.",
     "SAML 2.0 / OIDC pour toute votre organisation. Connectez FlowPoint à Okta, Azure AD ou Google Workspace et gérez les accès depuis un point central.": "SAML 2.0 / OIDC for your whole organization. Connect FlowPoint to Okta, Azure AD or Google Workspace and manage access from one central place.",
-    "Démarrez en 48h avec un workspace FlowPoint configuré sur mesure : données importées, dashboards créés et équipe formée par nos experts IA.": "Get started in 48 hours with a custom-configured FlowPoint workspace: data imported, dashboards built and your team trained by our AI experts.",
     "Ce plan est déjà votre plan actuel": "This plan is already your current plan",
     "Cet add-on est déjà actif sur votre compte": "This add-on is already active on your account",
     "Crédits IA ajoutés au panier ✓": "AI credits added to cart ✓",

@@ -59,7 +59,6 @@ const ADDONS = [
   { key: 'crmIntegration',        price: 2900, qty: false },
   { key: 'customDomain',          price:  900, qty: false },
   { key: 'ssoEnterprise',         price: 4900, qty: false },
-  { key: 'aiWorkspaceLaunch',     price: 4900, qty: false },
   { key: 'prioritySupport',       price: 2900, qty: false },
   { key: 'auditsPack200',         price: 1200, qty: true  },
   { key: 'auditsPack1000',        price: 3900, qty: true  },
