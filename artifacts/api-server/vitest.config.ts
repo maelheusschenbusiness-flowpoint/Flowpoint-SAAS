@@ -90,6 +90,11 @@ export default defineConfig({
       "src/services/market-intel-tables-db.test.ts",
       "src/services/market-intel-service.test.ts",
       "src/routes/market-intelligence-routes.test.ts",
+      // CRM Integrations : OAuth HubSpot chiffre, synchronisation, webhooks, tables CRM
+      "src/services/crm-tables-db.test.ts",
+      "src/services/crm/crm-hubspot.test.ts",
+      "src/services/crm-service.test.ts",
+      "src/routes/crm-readiness.test.ts",
       // [lot1:organicCampaignTracker]
       "src/routes/organic-campaign-tracker.test.ts",
       "src/services/organic-campaign-tracker.test.ts",
