@@ -172,6 +172,10 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     customDomain:         process.env["STRIPE_TEST_PRICE_ID_ADDON_CD"]          ?? "",
     extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
     gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
+    // CRM / AI GBP Posting : sans surcharge TEST, le mode TEST retombait sur l'id LIVE code en dur
+    // (« No such price » -> activation 502 stripe_error).
+    aiGbpPosting:         process.env["STRIPE_TEST_PRICE_ID_ADDON_AI_GBP_POSTING"] ?? "",
+    crmIntegration:       process.env["STRIPE_TEST_PRICE_ID_ADDON_CRM_INTEGRATION"] ?? "",
     // Paquets de capacite : sans surcharge TEST, le mode TEST retombait sur l'id LIVE (refus Stripe).
     auditsPack200:        process.env["STRIPE_TEST_PRICE_ID_ADDON_AUDITS200"]    ?? "",
     auditsPack1000:       process.env["STRIPE_TEST_PRICE_ID_ADDON_AUDITS1000"]   ?? "",
