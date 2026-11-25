@@ -52,6 +52,18 @@ export interface GetForecastParams {
  * Fetch forecast data scoped to the given organisation.
  * orgId is always required — never rely on site_url alone for tenant isolation.
  */
+/**
+ * seo_forecasts.forecast_date is a DATE: node-postgres returns a JS Date (local midnight), and
+ * String(date) leaked "Wed Nov 25 2026 00:00:00 GMT+0000 (...)" into the API. Always answer YYYY-MM-DD.
+ */
+export function toIsoDay(value: unknown): string {
+  if (value instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+  return String(value ?? "").slice(0, 10);
+}
+
 export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Promise<ForecastData> {
   const url = siteUrl ?? "default";
   try {
@@ -65,7 +77,7 @@ export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Pr
       );
       if (res.rows.length > 0) {
         const forecasts: ForecastPoint[] = res.rows.map((r: Record<string, unknown>) => ({
-          date: String(r["forecast_date"]),
+          date: toIsoDay(r["forecast_date"]),
           predictedTraffic: Number(r["predicted_traffic"] ?? 0),
           predictedConversions: Number(r["predicted_conversions"] ?? 0),
           predictedRevenue: Number(r["predicted_revenue"] ?? 0),
@@ -123,10 +135,14 @@ export async function generateForecasts(orgId: string, siteUrl: string): Promise
       };
     }
     const history = await client.query(
-      `SELECT date::date AS date, SUM(clicks)::int AS clicks
+      // gsc_keyword_data.date is TEXT ('YYYY-MM-DD'): comparing it to a timestamp raised
+      // "operator does not exist: text >= timestamp" and POST /forecast/generate answered 500.
+      // Cast once (NULLIF turns an empty string into NULL, which the filter then drops) and
+      // group on the cast value so a day is one row whatever its text spelling.
+      `SELECT NULLIF(date, '')::date AS day, SUM(clicks)::int AS clicks
        FROM gsc_keyword_data
-       WHERE org_id=$1 AND date >= CURRENT_DATE - INTERVAL '35 days'
-       GROUP BY date ORDER BY date ASC`,
+       WHERE org_id=$1 AND NULLIF(date, '')::date >= CURRENT_DATE - INTERVAL '35 days'
+       GROUP BY 1 ORDER BY 1 ASC`,
       [orgId]
     );
     if (history.rows.length < 14) {
