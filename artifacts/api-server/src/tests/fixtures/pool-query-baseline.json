@@ -309,6 +309,10 @@
       "total": 3,
       "noOrg": 3
     },
+    "services/funnel-rejections.ts": {
+      "total": 3,
+      "noOrg": 3
+    },
     "services/ga4-service.ts": {
       "total": 5,
       "noOrg": 2

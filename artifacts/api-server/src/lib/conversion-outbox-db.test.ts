@@ -144,6 +144,33 @@ describe("un jalon n'est perdu ni par un service endormi, ni par un redemarrage"
     expect(appels).toHaveLength(5);
   });
 
+  it("un jalon en 400 repete (fp_lid inconnu) ne bloque pas la file : les autres jalons dus partent", async (ctx) => {
+    if (!dbOk) return ctx.skip();
+    const inconnu = jalon("test:inconnu-" + randomUUID());
+    const sain = jalon("test:sain-" + randomUUID());
+    reponse = 400;
+    await queueConversionEvent(inconnu);
+    reponse = 202;
+    await queueConversionEvent(sain);
+    expect(await ligne(sain.eventId)).toMatchObject({ status: "delivered" });
+    // Un jalon sain en attente (service endormi) a cote d'un 400 deja replanifie.
+    const attente = jalon("test:attente-" + randomUUID());
+    reponse = "panne";
+    await queueConversionEvent(attente);
+    reponse = 400;
+    await echeance(inconnu.eventId);
+    await processConversionOutboxOnce(); // le 400 est replanifie a +15 min, dans le futur
+    expect(await ligne(inconnu.eventId)).toMatchObject({ status: "pending", last_status: "rejected:400", rejets_400: 2 });
+    reponse = 202;
+    await echeance(attente.eventId);
+    expect(await processConversionOutboxOnce()).toBeGreaterThanOrEqual(1);
+    expect(await ligne(attente.eventId)).toMatchObject({ status: "delivered" });
+    // Le 400 n'est plus du avant sa fenetre de reprise : aucun rejeu immediat.
+    const avant = appels.length;
+    await processConversionOutboxOnce();
+    expect(appels.length).toBe(avant);
+  });
+
   it("les echecs reseau (service endormi) ne consomment pas les essais reserves aux 400", async (ctx) => {
     if (!dbOk) return ctx.skip();
     // Un reveil Render long : quatre tentatives sans reponse, puis AI Lab repond 400
