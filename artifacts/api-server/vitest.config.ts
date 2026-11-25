@@ -279,6 +279,8 @@ export default defineConfig({
       // Livraison Stripe : signature reelle, cinq familles d'evenements, rejeu,
       // separation live/test et exemption des webhooks du compteur global
       "src/tests/stripe-webhook-delivery.test.ts",
+      // Prevision : requete d historique GSC (colonne date TEXT) et jour ISO.
+      "src/services/forecasting-generate-sql.test.ts",
     ],
     environment: "node",
     globals:     false,
