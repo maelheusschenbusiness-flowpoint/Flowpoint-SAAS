@@ -55381,7 +55381,6 @@ function renderAuditsAnalysis() {
             <div style="flex:1"><div class="fp-progress-track" style="height:6px"><div class="fp-progress-fill" style="width:${p.pct}%;background:${p.color}"></div></div></div>
             <div style="font-size:12px;font-weight:700;color:${p.color};min-width:30px;text-align:right">${p.count}</div>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="navigate('missions')">${fpT('Corriger')}</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" data-revenue-leak-resolve="${escHtml(l.id || '')}" title="${fpT('Fuite marquée comme résolue')}" onclick="window.FP_REVENUE_LEAK_API.resolve(this.dataset.revenueLeakResolve, this)">✓ ${fpT('Résolu')}</button>
           </div>
         `).join('')}
       </div>
@@ -60781,6 +60780,7 @@ function renderConversion() {
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text-muted)">${fpT('Revenu non mesuré')}</div>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" onclick="_fpMQ(this.closest('[data-step]')?.dataset?.step||fpT('Corriger point de friction conversion'),'Conversion','high')">${fpT('Corriger')}</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px;margin-left:6px" data-revenue-leak-resolve="${escHtml(l.id || '')}" title="${fpT('Fuite marquée comme résolue')}" onclick="window.FP_REVENUE_LEAK_API.resolve(this.dataset.revenueLeakResolve, this)">✓ ${fpT('Résolu')}</button>
               </div>
             </div>`;
           }).join("")}
