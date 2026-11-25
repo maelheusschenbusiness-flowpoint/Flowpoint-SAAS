@@ -123,7 +123,12 @@ la préparation. Si l’une des vérifications échoue ou reste inaccessible,
 **bloquer la bascule DNS** : l’audit ne serait pas fonctionnel en sécurité.
 Après confirmation de tous les contrôles, préparer
 `PUBLIC_AUDIT_ENABLED=true` dans le service Render existant avant la bascule,
-sans changer la base. Le service marketing ne modifie pas `app.flowpoint.pro`;
+sans DDL ni migration. La table de concurrence peut être vide : le code ajoute
+les deux lignes de slots en DML lors de la première réservation d’audit. Les
+audits réellement demandés après la mise en service écriront ensuite des
+compteurs de quotas pseudonymisés dans la base existante; ne pas provoquer ces
+écritures pendant la préparation. Le service marketing ne modifie pas
+`app.flowpoint.pro`;
 les événements de funnel existants pointent toujours vers cette application.
 
 Pour effectuer la revue sans modifier la base, exécuter ces lectures dans le
@@ -150,6 +155,12 @@ WHERE schema_row.nspname = 'public'
   AND relation.relname IN ('public_audit_quota_counters', 'public_audit_concurrency_slots')
 ORDER BY relation.relname, constraint_row.conname;
 
+SELECT tablename, indexname, indexdef
+FROM pg_indexes
+WHERE schemaname = 'public'
+  AND tablename IN ('public_audit_quota_counters', 'public_audit_concurrency_slots')
+ORDER BY tablename, indexname;
+
 SELECT has_table_privilege(current_user, 'public.public_audit_quota_counters', 'SELECT') AS quota_select,
        has_table_privilege(current_user, 'public.public_audit_quota_counters', 'INSERT') AS quota_insert,
        has_table_privilege(current_user, 'public.public_audit_quota_counters', 'UPDATE') AS quota_update,
@@ -163,6 +174,11 @@ FROM pg_class AS relation
 JOIN pg_namespace AS schema_row ON schema_row.oid = relation.relnamespace
 WHERE schema_row.nspname = 'public'
   AND relation.relname IN ('public_audit_quota_counters', 'public_audit_concurrency_slots');
+
+SELECT tablename, policyname, permissive, roles, cmd, qual, with_check
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND tablename IN ('public_audit_quota_counters', 'public_audit_concurrency_slots');
 
 SELECT quota_type, day_utc, count(*) AS counter_rows, sum(used)::bigint AS uses
 FROM public.public_audit_quota_counters
@@ -179,6 +195,10 @@ SELECT count(*) AS visible_database_connections
 FROM pg_stat_activity
 WHERE datname = current_database();
 ```
+
+Un résultat `configured_slots = 0` n’est pas, à lui seul, un blocage : les
+slots sont créés par le service au premier audit. Les permissions d’insertion
+et de mise à jour doivent toutefois être confirmées avant l’activation.
 
 7. Avant DNS, vérifier en lecture seule la paire de domaines dans Render, puis
    le staging :
