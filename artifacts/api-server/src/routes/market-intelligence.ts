@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import {
-  getMarketDashboard, generateMarketReport, detectCompetitorMovements,
+  getMarketDashboard, generateMarketReport, detectCompetitorMovements, marketDashboardSource,
 } from "../services/market-intel-service.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { canWrite } from "../middlewares/requireRole.js";
@@ -23,7 +23,7 @@ router.get("/market-intelligence", async (req, res) => {
   try {
     const orgId = org(req);
     const data = await getMarketDashboard(orgId);
-    res.json(data);
+    res.json({ ...data, source: marketDashboardSource(data) });
   } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", trends: [], opportunities: [], signals: [], competitor_movements: [], summary: null, stats: { avgOpportunityScore: 0, emergingTrends: 0 } }); }
 });
 

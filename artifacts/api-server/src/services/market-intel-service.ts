@@ -116,20 +116,29 @@ export function deriveCompetitorMovements(rows: readonly CompetitorSnapshot[]): 
   return movements.sort((a, b) => b.detected_at.localeCompare(a.detected_at)).slice(0, 20);
 }
 
+/**
+ * Origine des chiffres du tableau de bord : « gsc » (tendances mesurees), « competitor_rankings »
+ * (mouvements observes) ou « no_data ». Meme vocabulaire que /trends, /opportunities et /competitor-movements.
+ */
+export function marketDashboardSource(d: Pick<MarketDashboard, "trends" | "competitor_movements">): "gsc" | "competitor_rankings" | "no_data" {
+  if (d.trends.length > 0) return "gsc";
+  return d.competitor_movements.length > 0 ? "competitor_rankings" : "no_data";
+}
+
 export async function getMarketDashboard(orgId: string): Promise<MarketDashboard> {
   const client = await pool.connect();
   try {
     const [trendRows, signals, rankingRows] = await Promise.all([
       client.query<GscTrendInput>(
         `SELECT keyword,
-                SUM(clicks) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 28)::int AS recent_clicks,
-                SUM(clicks) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 56
-                                    AND NULLIF(date, '')::date < CURRENT_DATE - 28)::int AS previous_clicks,
-                SUM(impressions) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 28)::int AS recent_impressions
+                SUM(clicks) FILTER (WHERE NULLIF(date, '')::date > CURRENT_DATE - 28)::int AS recent_clicks,
+                SUM(clicks) FILTER (WHERE NULLIF(date, '')::date > CURRENT_DATE - 56
+                                    AND NULLIF(date, '')::date <= CURRENT_DATE - 28)::int AS previous_clicks,
+                SUM(impressions) FILTER (WHERE NULLIF(date, '')::date > CURRENT_DATE - 28)::int AS recent_impressions
            FROM gsc_keyword_data
-          WHERE org_id=$1 AND NULLIF(date, '')::date >= CURRENT_DATE - 56
+          WHERE org_id=$1 AND NULLIF(date, '')::date > CURRENT_DATE - 56
           GROUP BY keyword
-         HAVING SUM(impressions) FILTER (WHERE NULLIF(date, '')::date >= CURRENT_DATE - 28) > 0
+         HAVING SUM(impressions) FILTER (WHERE NULLIF(date, '')::date > CURRENT_DATE - 28) > 0
           ORDER BY recent_impressions DESC LIMIT 100`,
         [orgId]
       ),
