@@ -337,12 +337,15 @@ router.get("/behavioral/snippet", canWrite, requireAddon("behavioralAI", "Behavi
   const tokenHash  = hashToken(plainToken);
 
   try {
-    // Cross-tenant ownership guard using req.orgDb (RLS-enforced)
-    const existing = await orgDb(req)(
-      `SELECT org_id FROM behavior_site_tokens WHERE site_url=$1 LIMIT 1`,
-      [siteUrl]
-    );
-    if (existing.rows[0] && (existing.rows[0] as Record<string, unknown>).org_id !== orgId) {
+    // Cross-tenant ownership guard. It must NOT use req.orgDb: under RLS (tenant_select)
+    // another organization's row is invisible, so the guard never fired and the INSERT ... ON
+    // CONFLICT below then failed with an RLS violation (HTTP 500 instead of 403).
+    const [existing] = await db
+      .select({ orgId: behaviorSiteTokensTable.orgId })
+      .from(behaviorSiteTokensTable)
+      .where(eq(behaviorSiteTokensTable.siteUrl, siteUrl))
+      .limit(1);
+    if (existing && existing.orgId !== orgId) {
       res.status(403).json({ error: "This site URL is already registered to another organization" }); return;
     }
 
@@ -354,8 +357,12 @@ router.get("/behavioral/snippet", canWrite, requireAddon("behavioralAI", "Behavi
     );
 
     try { behavioralOriginAllowlist.add(new URL(siteUrl).origin); } catch {}
-  } catch {
+  } catch (err) {
     if (res.headersSent) return;
+    // Concurrent claim of the same site by another org: RLS rejects the conflicting upsert.
+    if ((err as { code?: string })?.code === "42501") {
+      res.status(403).json({ error: "This site URL is already registered to another organization" }); return;
+    }
     res.status(500).json({ error: "Failed to provision site token" }); return;
   }
 
