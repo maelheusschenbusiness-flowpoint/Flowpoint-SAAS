@@ -169,22 +169,32 @@ export async function saveTokens(orgId: string, tokens: GoogleTokens): Promise<v
 export async function getValidToken(orgId: string): Promise<string> {
   const client = await pool.connect();
   try {
+    // Les tables Google sont creees a la premiere connexion : tant qu'aucune organisation ne s'est
+    // connectee, elles n'existent pas (42P01). C'est « jamais connecte », pas un echec d'autorisation.
+    const missingTable = (e: unknown) => (e as { code?: string })?.code === "42P01";
     // Primary: google_tokens
     let row: Record<string, unknown> | undefined;
-    const r1 = await client.query(
-      `SELECT access_token, refresh_token, expires_at FROM google_tokens WHERE org_id=$1 LIMIT 1`,
-      [orgId]
-    );
-    if (r1.rows[0]) {
-      row = r1.rows[0] as Record<string, unknown>;
-    } else {
-      // Fallback: google_accounts (pre-migration rows)
-      const r2 = await client.query(
-        `SELECT access_token, refresh_token, token_expiry AS expires_at
-         FROM google_accounts WHERE org_id=$1 LIMIT 1`,
+    try {
+      const r1 = await client.query(
+        `SELECT access_token, refresh_token, expires_at FROM google_tokens WHERE org_id=$1 LIMIT 1`,
         [orgId]
       );
-      if (r2.rows[0]) row = r2.rows[0] as Record<string, unknown>;
+      if (r1.rows[0]) row = r1.rows[0] as Record<string, unknown>;
+    } catch (e) {
+      if (!missingTable(e)) throw e;
+    }
+    if (!row) {
+      // Fallback: google_accounts (pre-migration rows)
+      try {
+        const r2 = await client.query(
+          `SELECT access_token, refresh_token, token_expiry AS expires_at
+           FROM google_accounts WHERE org_id=$1 LIMIT 1`,
+          [orgId]
+        );
+        if (r2.rows[0]) row = r2.rows[0] as Record<string, unknown>;
+      } catch (e) {
+        if (!missingTable(e)) throw e;
+      }
     }
 
     if (!row) throw new Error(`Google not connected for org: ${orgId}`);
