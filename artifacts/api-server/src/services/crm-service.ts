@@ -14,6 +14,7 @@ export const CRM_PROVIDERS = [
 export type CrmProvider = typeof CRM_PROVIDERS[number]['id'];
 
 import { getQuota } from "../lib/config.js";
+import { implementedCrmProviders } from "./crm/registry.js";
 
 export class CrmCapabilityUnavailableError extends Error {
   readonly code = "CRM_SYNC_UNAVAILABLE";
@@ -37,11 +38,17 @@ const CRM_PUBLIC_INTEGRATION_FIELDS = [
 ] as const;
 
 function toPublicCrmIntegration(row: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
+  const out: Record<string, unknown> = Object.fromEntries(
     CRM_PUBLIC_INTEGRATION_FIELDS
       .filter((field) => row[field] !== undefined)
       .map((field) => [field, row[field]]),
   );
+  // Une ligne heritee d'un ancien flux (fournisseur sans adaptateur) ne prouve aucune connexion reelle :
+  // elle n'est jamais presentee comme « connected ».
+  const implemented = implementedCrmProviders().includes(String(row["provider"]));
+  out["implemented"] = implemented;
+  if (!implemented && out["status"] === "connected") out["status"] = "unavailable";
+  return out;
 }
 
 export function getCrmLimit(plan: string): number {
@@ -53,6 +60,8 @@ export function getCrmLimit(plan: string): number {
 export async function getCrmStatus(orgId: string): Promise<{
   integrations: unknown[];
   connected: number;
+  /** Places de quota occupees (lignes `connected`, y compris heritees d'un fournisseur sans adaptateur). */
+  slotsUsed: number;
   stats: Record<string, unknown>;
 }> {
   const client = await pool.connect();
@@ -64,7 +73,8 @@ export async function getCrmStatus(orgId: string): Promise<{
         ORDER BY connected_at DESC`,
       [orgId],
     );
-    const connected = r.rows.filter((i: { status: string }) => i.status === 'connected').length;
+    const integrations = r.rows.map((row: Record<string, unknown>) => toPublicCrmIntegration(row));
+    const connected = integrations.filter((i) => i["status"] === 'connected').length;
     const statsRes = await client.query(`
       SELECT COUNT(*) total_syncs,
              SUM(records_processed) total_records,
@@ -75,8 +85,9 @@ export async function getCrmStatus(orgId: string): Promise<{
     `, [orgId]);
     const s = statsRes.rows[0] || {};
     return {
-      integrations: r.rows.map((row: Record<string, unknown>) => toPublicCrmIntegration(row)),
+      integrations,
       connected,
+      slotsUsed: r.rows.filter((i: { status: string }) => i.status === 'connected').length,
       stats: {
         totalSyncs: parseInt(s.total_syncs || '0', 10),
         totalRecords: parseInt(s.total_records || '0', 10),
@@ -132,12 +143,31 @@ export async function getFieldMappings(orgId: string, crmId: string): Promise<un
   }
 }
 
-export async function upsertFieldMapping(orgId: string, crmId: string, entityType: string, fpField: string, crmField: string): Promise<void> {
+/**
+ * Enregistre (ou remplace) le mapping d'un champ. Retourne `false` si l'integration n'appartient pas a
+ * l'organisation (aucune ecriture) : l'appelant repond 404 au lieu d'annoncer un faux succes.
+ * Remplacement reel : un mapping existant pour (integration, entite, champ Flowpoint) est mis a jour.
+ */
+export async function upsertFieldMapping(orgId: string, crmId: string, entityType: string, fpField: string, crmField: string): Promise<boolean> {
   const id = `fm_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
   const client = await pool.connect();
   try {
-    await client.query(`INSERT INTO crm_field_mappings (id,crm_integration_id,entity_type,flowpoint_field,crm_field,org_id) SELECT $1,id,$2,$3,$4,org_id FROM crm_integrations WHERE org_id=$5 AND id=$6 ON CONFLICT DO NOTHING`,
-      [id, entityType, fpField, crmField, orgId, crmId]);
+    await client.query("BEGIN");
+    const owner = await client.query(`SELECT id FROM crm_integrations WHERE org_id=$1 AND id=$2 FOR UPDATE`, [orgId, crmId]);
+    if (owner.rows.length === 0) { await client.query("ROLLBACK"); return false; }
+    await client.query(
+      `DELETE FROM crm_field_mappings WHERE org_id=$1 AND crm_integration_id=$2 AND entity_type=$3 AND flowpoint_field=$4`,
+      [orgId, crmId, entityType, fpField],
+    );
+    await client.query(
+      `INSERT INTO crm_field_mappings (id,crm_integration_id,entity_type,flowpoint_field,crm_field,org_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, crmId, entityType, fpField, crmField, orgId],
+    );
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
   } finally {
     client.release();
   }

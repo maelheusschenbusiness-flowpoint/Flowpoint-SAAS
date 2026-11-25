@@ -592,8 +592,10 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "marketIntelligence",
 
   // ── Routes exist but not commercially released ─────────────────────────────
-  // CRM OAuth, provider health checks, synchronization, and signed webhooks are
-  // not implemented yet. Keep unavailable for purchase until those paths exist.
+  // HubSpot (OAuth, synchronisation manuelle des contacts, webhooks signes) est
+  // implemente et teste contre une fausse API, mais JAMAIS certifie contre un vrai
+  // HubSpot ; les autres CRM repondent 501. Reste non achetable tant que la
+  // certification fournisseur (docs/CERTIFICATION-HUBSPOT-PROTOCOLE.md) n'est pas faite.
   "crmIntegration",
 
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
