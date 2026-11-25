@@ -81,7 +81,7 @@ inventer de jeton DNS.
 | `DATABASE_URL` | URL existante du PostgreSQL Render; vérifier en lecture seule que le schéma et le rôle sont corrects avant de l’utiliser. |
 | `PUBLIC_AUDIT_DATABASE_URL` | URL vers le PostgreSQL existant. Elle peut viser la même base que `DATABASE_URL` si les tables de quotas approuvées y existent déjà. Ne pas créer de base ni écrire le schéma sans approbation. |
 | `SESSION_SECRET` | Secret propre au service d’au moins 32 caractères. |
-| `PUBLIC_AUDIT_ENABLED` | `false` au démarrage et à la bascule initiale. |
+| `PUBLIC_AUDIT_ENABLED` | `true` pour la bascule et le service public uniquement après validation de tous les contrôles en lecture seule ci-dessous. Si un contrôle ne peut pas être confirmé, ne pas basculer le DNS. |
 | `PUBLIC_AUDIT_TEST_MODE` | `false` pour le profil de production. |
 | `PUBLIC_AUDIT_DAILY_LIMIT` | `10` audits globaux par jour UTC. |
 | `PUBLIC_AUDIT_NETWORK_DAILY_LIMIT` | `5` audits par IP normalisée exacte et par jour UTC. |
@@ -91,12 +91,94 @@ inventer de jeton DNS.
 | `RESEND_FROM_EMAIL` | Adresse expéditrice déjà vérifiée chez Resend. |
 | `CONTACT_TO_EMAIL` | `support@flowpoint.pro`, ou destinataire approuvé. |
 
-Si le PostgreSQL Render existant ne possède pas déjà les tables d’audit et les
-droits d’exécution nécessaires, garder l’audit désactivé et arrêter.
-Activer `PUBLIC_AUDIT_ENABLED=true`, appliquer le schéma, réaliser des tests
-d’écriture, envoyer un e-mail, ou soumettre un formulaire demandent chacun une
-autorisation distincte. Le service marketing ne modifie pas `app.flowpoint.pro`;
+### Porte de sécurité obligatoire pour l’audit gratuit
+
+L’audit gratuit doit être disponible dès que `flowpoint.pro` est servi par
+Render. Avant toute bascule DNS, vérifier en lecture seule, dans le PostgreSQL
+Render déjà utilisé par le service et avec le rôle que prendra
+`PUBLIC_AUDIT_DATABASE_URL` :
+
+1. Les tables `public_audit_quota_counters` et
+   `public_audit_concurrency_slots` existent déjà et correspondent exactement
+   aux colonnes, types, clés, contraintes et index décrits dans
+   `scripts/public-audit-release-schema.sql`. Ne pas exécuter ce fichier.
+2. Le rôle applicatif peut lire, insérer, mettre à jour et supprimer dans
+   `public_audit_quota_counters`, et lire, insérer et mettre à jour dans
+   `public_audit_concurrency_slots`. Vérifier également l’absence de politiques
+   RLS ou de limites de connexion qui empêcheraient ces opérations.
+3. `PUBLIC_AUDIT_DATABASE_URL` cible bien cette base existante; ne pas la
+   remplacer par la base Replit ni par une base du projet Neon d’add-ons.
+4. Le compte et le service Render existants ont assez de connexions disponibles
+   pour le pool de quota (`max: 4`) et la concurrence configurée (`2`).
+5. Le service utilise `PUBLIC_AUDIT_TEST_MODE=false`, un `SESSION_SECRET` propre
+   à la production d’au moins 32 caractères et les plafonds listés ci-dessus :
+   10 audits globaux, 5 par adresse IP normalisée exacte, 3 par visiteur et 2
+   simultanés. Vérifier dans Render que l’adresse IP observée vient du proxy
+   Render et non d’un en-tête fourni par le visiteur.
+
+Ces contrôles ne doivent lire ni contenu de leads, ni conversations, ni
+historique Replit. Les seuls objets concernés sont les deux tables de quotas.
+Ne pas réaliser d’audit réel, de test d’écriture, de DDL ou de migration pendant
+la préparation. Si l’une des vérifications échoue ou reste inaccessible,
+**bloquer la bascule DNS** : l’audit ne serait pas fonctionnel en sécurité.
+Après confirmation de tous les contrôles, préparer
+`PUBLIC_AUDIT_ENABLED=true` dans le service Render existant avant la bascule,
+sans changer la base. Le service marketing ne modifie pas `app.flowpoint.pro`;
 les événements de funnel existants pointent toujours vers cette application.
+
+Pour effectuer la revue sans modifier la base, exécuter ces lectures dans le
+PostgreSQL Render après avoir sélectionné le rôle utilisé par
+`PUBLIC_AUDIT_DATABASE_URL`. Elles n’exposent ni les clés pseudonymisées de
+visiteurs ni des données de leads. Comparer les colonnes, contraintes et index
+au schéma de référence ci-dessus; ne pas exécuter ce dernier.
+
+```sql
+SELECT current_database() AS database_name, current_user AS application_role;
+
+SELECT table_name, column_name, udt_name, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN ('public_audit_quota_counters', 'public_audit_concurrency_slots')
+ORDER BY table_name, ordinal_position;
+
+SELECT relation.relname AS table_name, constraint_row.conname,
+       constraint_row.contype, pg_get_constraintdef(constraint_row.oid) AS definition
+FROM pg_constraint AS constraint_row
+JOIN pg_class AS relation ON relation.oid = constraint_row.conrelid
+JOIN pg_namespace AS schema_row ON schema_row.oid = relation.relnamespace
+WHERE schema_row.nspname = 'public'
+  AND relation.relname IN ('public_audit_quota_counters', 'public_audit_concurrency_slots')
+ORDER BY relation.relname, constraint_row.conname;
+
+SELECT has_table_privilege(current_user, 'public.public_audit_quota_counters', 'SELECT') AS quota_select,
+       has_table_privilege(current_user, 'public.public_audit_quota_counters', 'INSERT') AS quota_insert,
+       has_table_privilege(current_user, 'public.public_audit_quota_counters', 'UPDATE') AS quota_update,
+       has_table_privilege(current_user, 'public.public_audit_quota_counters', 'DELETE') AS quota_delete,
+       has_table_privilege(current_user, 'public.public_audit_concurrency_slots', 'SELECT') AS slots_select,
+       has_table_privilege(current_user, 'public.public_audit_concurrency_slots', 'INSERT') AS slots_insert,
+       has_table_privilege(current_user, 'public.public_audit_concurrency_slots', 'UPDATE') AS slots_update;
+
+SELECT relation.relname AS table_name, relation.relrowsecurity, relation.relforcerowsecurity
+FROM pg_class AS relation
+JOIN pg_namespace AS schema_row ON schema_row.oid = relation.relnamespace
+WHERE schema_row.nspname = 'public'
+  AND relation.relname IN ('public_audit_quota_counters', 'public_audit_concurrency_slots');
+
+SELECT quota_type, day_utc, count(*) AS counter_rows, sum(used)::bigint AS uses
+FROM public.public_audit_quota_counters
+WHERE day_utc >= (now() AT TIME ZONE 'UTC')::date - 1
+GROUP BY quota_type, day_utc
+ORDER BY day_utc, quota_type;
+
+SELECT count(*) FILTER (WHERE slot_id BETWEEN 1 AND 2) AS configured_slots,
+       count(*) FILTER (WHERE lease_expires_at > now()) AS active_leases
+FROM public.public_audit_concurrency_slots;
+
+SHOW max_connections;
+SELECT count(*) AS visible_database_connections
+FROM pg_stat_activity
+WHERE datname = current_database();
+```
 
 7. Avant DNS, vérifier en lecture seule la paire de domaines dans Render, puis
    le staging :
@@ -148,7 +230,8 @@ au lieu d’être redirigé.
 Limiter les premières vérifications à des requêtes GET. Ne pas appeler l’audit,
 soumettre le formulaire de contact/de lead, déclencher un e-mail, créer une
 conversation persistante, ou envoyer un événement commercial réel pendant
-cette validation. Garder l’audit désactivé jusqu’à son autorisation distincte.
+cette validation. Si l’audit ne peut pas être activé à cause d’un contrôle
+manquant, ne pas effectuer la bascule.
 
 Les envois de formulaire reçus sur Replit pendant la propagation restent dans
 la base Replit; les nouveaux envois sur Render restent dans le PostgreSQL
