@@ -9,6 +9,7 @@ import {
   getProductionResourceArticles,
   getResourceArticleCanonical,
   getResourceArticleFromPath,
+  getResourceArticlePath,
   RESOURCE_SITE_URL,
 } from "../shared/resource-articles";
 import { HOME_FAQS } from "../shared/home-faqs";
@@ -200,6 +201,27 @@ test("resource schemas use the English canonical URL and breadcrumb labels", () 
     ["Home", "Resources", article.h1],
   );
   assert.equal(breadcrumb.itemListElement[1].item, `${RESOURCE_SITE_URL}/resources`);
+});
+
+test("legacy French resource slugs canonicalize to the published English route", () => {
+  const canonicalPath = "/resources/how-to-perform-website-seo-audit";
+  const canonical = `${RESOURCE_SITE_URL}${canonicalPath}`;
+  assert.equal(
+    getResourceArticlePath("comment-faire-audit-seo-site-web"),
+    canonicalPath,
+  );
+  assert.equal(
+    getResourceArticleCanonical("comment-faire-audit-seo-site-web"),
+    canonical,
+  );
+  assert.equal(
+    getResourceArticleCanonical("how-to-perform-website-seo-audit"),
+    canonical,
+  );
+  assert.equal(
+    getResourceArticleFromPath("/resources/comment-faire-audit-seo-site-web")?.slug,
+    "comment-faire-audit-seo-site-web",
+  );
 });
 
 test("every production article schema language agrees with the English document shell", () => {
