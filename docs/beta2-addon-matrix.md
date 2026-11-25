@@ -1,6 +1,6 @@
 # Matrice de suivi — add-ons bêta 2.0
 
-Mise à jour : 13 novembre 2026. Cette matrice est la source de suivi unique des 24 modules.
+Mise à jour : 18 novembre 2026 (synthèse publication ajoutée ; le détail par module date du 13 novembre). Cette matrice est la source de suivi unique des 24 modules.
 
 Le rapport archivé du 3 novembre 2026 attribue historiquement **8/24** validations aux huit add-ons de remplacement (`docs/flowpoint-audit-status-2026-11-03.md`, commit `6c78d7d`). En ajoutant la certification locale complète actuelle d’Agency Reporting Packs, **9/24 modules ont une preuve de certification** : huit attributions historiques non rejouées et une certification locale complète produite. Ce total ne signifie pas que neuf fournisseurs ont été certifiés.
 
@@ -34,6 +34,17 @@ Les 6 tests ignorés sont structurels : `market-intel-persistence-db` (exige `CI
 | AI Workspace Launch | Terminée | Génération sous quota IA, missions persistées et vérifiées, **historique restauré depuis la base** (#432), planification derrière deux add-ons et désactivée en production par défaut. | 34 tests (5 fichiers) | IA réelle ; rapports planifiés avec e-mail réel. |
 
 Défauts transverses corrigés dans cet audit : identifiants tronqués servant de clés primaires (`seo_forecasts`, `gsc_sites` — où l'échec était avalé par un `.catch(() => {})` et où le callback OAuth désactivait tous les sites avant l'insertion —, `competitor_map_results`), tous remplacés par `lib/stable-id.ts` ; valeurs d'exemple substituées à des paramètres manquants ; états de panne présentés comme « aucune donnée ».
+
+## Synthèse publication — 18 novembre 2026
+
+Détail complet : `docs/ADDONS-24-MATRICE-PUBLICATION-2026-11-18.md`. **READY 0 / BLOCKED 23 / INCOMPLETE 1** (CRM Integrations). Critère : un add-on n'est READY qu'avec un achat/activation **réel** Stripe TEST ; le simulé ne le remplace jamais.
+
+| Constat | Résultat |
+|---|---|
+| Prix Stripe TEST cohérents avec le catalogue | 9 add-ons (Agency Packs, Organic Campaign Tracker, Technical SEO Fix Verification, Agency Portfolio Priorities, SEO Change Impact, Conversion Opportunity Engine, Local Landing Opportunities, Local Presence Optimizer, GBP Performance & Leads) ; 3 prix `[CERT]` (Keyword Domination, Advanced SEO Lab, Backlink Intelligence) ; **12 sans prix TEST** |
+| Achat/activation réel Stripe TEST | Agency Packs seul, partiel (11 abonnements créés puis annulés les 8-9/11 via serveur local ; pas de webhook réel ni de renouvellement) ; **0 abonnement** sur les 11 autres prix ; reste simulé |
+| Rejeu navigateur 17/11 | 10 validés (AI GBP Posting, Revenue Leak AI, AI Forecasting, Advanced SEO Lab, AI CRO, AI Workspace Launch, Backlink Intelligence, GBP Performance, Local Presence, Local Landing) ; 4 instables corrigés ensuite par la PR #493 (`cdb2c28b`, intégrée à Test-Replit), rejeu complet à refaire ; Agency Packs 1 timeout isolé ; 7 sans parcours navigateur (Behavioral AI, AI Executive Reporting, AI Market Intelligence, CRM, Keyword Domination, SLA Monitoring, SEO Content Decay Radar) |
+| Production (`Flowpoint`) | aucune organisation avec add-on actif ; 8 add-ons absents ; 5 dérives de prix de catalogue ; fusionner `plans.ts` retirerait de la vente 6 add-ons beta ; compatibilité backend sans changement : **non** pour les 24 |
 
 ---
 
