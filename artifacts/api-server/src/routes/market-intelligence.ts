@@ -3,6 +3,8 @@ import { safeErrMsg } from "../lib/safe-error.js";
 import {
   getMarketDashboard, generateMarketReport, detectCompetitorMovements,
 } from "../services/market-intel-service.js";
+import { marketLang, localizeReportTitle, type MarketLang } from "../services/market-intel-service.js";
+import { resolveRequestLanguage } from "../lib/request-language.js";
 import { requireAddon } from "../middlewares/planGate.js";
 import { canWrite } from "../middlewares/requireRole.js";
 
@@ -18,11 +20,17 @@ type OrgReq = Request & {
 };
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+// Langue d'affichage : option explicite, préférence utilisateur, langue de l'organisation, sinon anglais.
+// Jamais déduite d'Accept-Language. Une panne de lecture retombe sur l'anglais, sans bloquer la route.
+const langOf = async (req: Request): Promise<MarketLang> => {
+  try { return marketLang(await resolveRequestLanguage(req, { explicit: req.query["lang"] })); }
+  catch { return "en"; }
+};
 
 router.get("/market-intelligence", async (req, res) => {
   try {
     const orgId = org(req);
-    const data = await getMarketDashboard(orgId);
+    const data = await getMarketDashboard(orgId, await langOf(req));
     res.json(data);
   } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", trends: [], opportunities: [], signals: [], competitor_movements: [], summary: null, stats: { avgOpportunityScore: 0, emergingTrends: 0 } }); }
 });
@@ -32,7 +40,7 @@ router.get("/market-intelligence/trends", async (req, res) => {
   try {
     const minScore = Number.isFinite(Number(min_score)) ? Number(min_score) : 0;
     const limit = Math.min(100, Math.max(1, Number.parseInt(lim, 10) || 20));
-    const trends = (await getMarketDashboard(org(req))).trends
+    const trends = (await getMarketDashboard(org(req), await langOf(req))).trends
       .filter((trend) => trend.opportunity_score >= minScore).slice(0, limit);
     res.json({ trends, count: trends.length, source: trends.length ? "gsc" : "no_data" });
   } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", trends: [], count: 0 }); }
@@ -42,7 +50,7 @@ router.get("/market-intelligence/opportunities", async (req, res) => {
   const { type, limit: lim = "15" } = req.query as Record<string, string>;
   try {
     const limit = Math.min(100, Math.max(1, Number.parseInt(lim, 10) || 15));
-    const opportunities = (await getMarketDashboard(org(req))).opportunities
+    const opportunities = (await getMarketDashboard(org(req), await langOf(req))).opportunities
       .filter((item) => !type || item.type === type).slice(0, limit);
     res.json({ opportunities, count: opportunities.length, source: opportunities.length ? "gsc" : "no_data" });
   } catch { res.status(503).json({ error: "Market data is temporarily unavailable.", code: "MARKET_DATA_UNAVAILABLE", opportunities: [], count: 0 }); }
@@ -78,7 +86,9 @@ router.get("/market-intelligence/reports", async (req, res) => {
         LIMIT 20`,
       [org(req)]
     );
-    res.json({ reports: r.rows, count: r.rows.length, source: "saved_reports" });
+    const lang = await langOf(req);
+    const reports = r.rows.map((row) => ({ ...row, title: localizeReportTitle(row["title"], row["generated_at"], lang) }));
+    res.json({ reports, count: reports.length, source: "saved_reports" });
   } catch (err) {
     res.status(503).json({ error: safeErrMsg(err), code: "MARKET_REPORTS_UNAVAILABLE" });
   }
@@ -94,7 +104,8 @@ router.get("/market-intelligence/reports/:id", async (req, res) => {
       [req.params["id"], org(req)]
     );
     if (!r.rows[0]) { res.status(404).json({ error: "Rapport introuvable." }); return; }
-    res.json({ report: r.rows[0] });
+    const row = r.rows[0];
+    res.json({ report: { ...row, title: localizeReportTitle(row["title"], row["generated_at"], await langOf(req)) } });
   } catch (err) {
     res.status(503).json({ error: safeErrMsg(err), code: "MARKET_REPORT_UNAVAILABLE" });
   }
@@ -102,7 +113,7 @@ router.get("/market-intelligence/reports/:id", async (req, res) => {
 
 router.post("/market-intelligence/report/generate", canWrite, async (req, res) => {
   try {
-    const report = await generateMarketReport(org(req));
+    const report = await generateMarketReport(org(req), await langOf(req));
     res.json({ ok: true, report });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
