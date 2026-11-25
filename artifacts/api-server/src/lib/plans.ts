@@ -672,7 +672,14 @@ export function getPlanForPriceId(priceId: string): string | null {
 }
 
 export function getAddonForPriceId(priceId: string): string | null {
+  if (!priceId) return null;
   for (const [addon, id] of Object.entries(ADDON_PRICE_IDS)) {
+    if (id && id === priceId) return addon;
+  }
+  // Mode TEST : addon-stripe-sync facture avec ADDON_PRICE_IDS_TEST (cf. getAddonPriceId).
+  // Sans cette recherche, la reconciliation du webhook (customer.subscription.updated) ne
+  // reconnait aucun item TEST et desactive TOUS les add-ons payants des qu'un 2e item est ajoute.
+  for (const [addon, id] of Object.entries(ADDON_PRICE_IDS_TEST)) {
     if (id && id === priceId) return addon;
   }
   return null;
