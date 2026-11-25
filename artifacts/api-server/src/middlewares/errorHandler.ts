@@ -75,6 +75,22 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     return;
   }
 
+  // Client errors raised by body-parser / http-errors (payload too large, malformed JSON, ...):
+  // they carry a 4xx `status` and `expose: true`; answering 500 hides a client mistake as a server fault.
+  if (err && typeof err === 'object') {
+    const httpErr = err as { status?: unknown; type?: unknown; expose?: unknown };
+    if (typeof httpErr.status === 'number' && httpErr.status >= 400 && httpErr.status < 500 && httpErr.expose === true) {
+      const tooLarge = httpErr.type === 'entity.too.large';
+      res.status(httpErr.status).json({
+        ok: false,
+        error: tooLarge ? 'Request body too large' : 'Invalid request',
+        code: tooLarge ? 'PAYLOAD_TOO_LARGE' : 'BAD_REQUEST',
+        requestId,
+      });
+      return;
+    }
+  }
+
   // Generic errors
   const message = err instanceof Error ? err.message : String(err);
   const stack   = err instanceof Error ? err.stack : undefined;
