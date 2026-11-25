@@ -160,6 +160,8 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     backlinkIntelligence: process.env["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"]    ?? "",
     behavioralAI:         process.env["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"]     ?? "",
     aiForecasting:        process.env["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"]    ?? "",
+    // Sans cette ligne l'add-on retombait sur l'id LIVE en mode TEST : Stripe le refusait (502 a l'activation).
+    marketIntelligence:   process.env["STRIPE_TEST_PRICE_ID_ADDON_MARKET_INTELLIGENCE"] ?? "",
     enterprisePermissions:process.env["STRIPE_TEST_PRICE_ID_ADDON_ENT"]         ?? "",
     advancedWebhooks:     process.env["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"]    ?? "",
     retention365d:        process.env["STRIPE_TEST_PRICE_ID_ADDON_RET365"]      ?? "",
