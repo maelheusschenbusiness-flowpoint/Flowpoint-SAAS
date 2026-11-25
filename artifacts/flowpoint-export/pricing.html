@@ -1378,9 +1378,12 @@
 
   function _fpPricingQuantityLabel(addonName, direction) {
     var name = String(addonName || "add-on");
+    // Le nom vient du DOM encore en français (le traducteur n'est pas passé) : on le traduit ici,
+    // sinon l'étiquette d'accessibilité mêle anglais et français.
+    var englishName = (window.fpPublicTranslateToEnglish && window.fpPublicTranslateToEnglish(name)) || name;
     return direction < 0
-      ? _fpPricingText("Réduire la quantité de " + name, "Decrease quantity of " + name)
-      : _fpPricingText("Augmenter la quantité de " + name, "Increase quantity of " + name);
+      ? _fpPricingText("Réduire la quantité de " + name, "Decrease quantity of " + englishName)
+      : _fpPricingText("Augmenter la quantité de " + name, "Increase quantity of " + englishName);
   }
 
   function _fpSetAddonQuantityControls(card, addonName, state, isActive, addon) {

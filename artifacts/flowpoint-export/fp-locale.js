@@ -132,6 +132,7 @@
     "Suivez les objectifs de clics et de position à partir des données GSC mesurées.": "Track click and ranking goals using measured GSC data.",
     "Synthèse des régions de contrôle Better Stack configurées": "Summary of configured Better Stack monitoring regions",
     "🚧 Bientôt disponible": "🚧 Coming soon",
+    "Bientôt disponible": "Coming soon",
     "SLA Monitoring Avancé": "Advanced SLA monitoring",
     "Suivi SLA et rapports de disponibilité": "SLA tracking and uptime reports",
     "Audit SEO avancé et recommandations IA": "Advanced SEO audit and AI recommendations",
@@ -365,12 +366,14 @@
     "Les liens de connexion expirent après 1 heure. Demandez un nouveau lien.": "Sign-in links expire after one hour. Request a new link.",
     "L'email de connexion n'a pas pu être envoyé.": "The sign-in email could not be sent.",
     "Cette invitation a déjà été acceptée.": "This invitation has already been accepted.",
+    "Cette invitation a déjà été acceptée. Connectez-vous directement.": "This invitation has already been accepted. Sign in directly.",
     "Connectez-vous directement.": "Sign in directly.",
     "Email incorrect — assurez-vous d'utiliser l'adresse à laquelle l'invitation a été envoyée.": "Incorrect email — use the address the invitation was sent to.",
     "Une erreur est survenue. Réessayez.": "An error occurred. Please try again.",
     "Cette invitation a été révoquée par l'administrateur.": "This invitation was revoked by the administrator.",
     "Ce lien d'invitation a expiré. Demandez un nouvel envoi à votre administrateur.": "This invitation link has expired. Ask your administrator to send a new one.",
     "Cette invitation est introuvable ou invalide.": "This invitation could not be found or is invalid.",
+    "Ce lien d'invitation est introuvable ou invalide.": "This invitation link could not be found or is invalid.",
     "Ce lien d'invitation est invalide ou a expiré.": "This invitation link is invalid or has expired.",
     "Ce lien n'est plus valide.": "This link is no longer valid.",
     "Impossible de vérifier l'invitation. Vérifiez votre connexion et réessayez.": "Unable to verify the invitation. Check your connection and try again.",
@@ -1029,6 +1032,9 @@
     return Object.prototype.hasOwnProperty.call(PUBLIC_ENGLISH, source) ? PUBLIC_ENGLISH[source] : null;
   }
   window.fpPublicFunnelTranslateToFrench = translateToFrench;
+  // Traduction exacte d'un libellé du catalogue (null si absent) : pour les textes assemblés par un script
+  // de page avant que le traducteur n'ait parcouru le DOM (ex. étiquettes d'accessibilité).
+  window.fpPublicTranslateToEnglish = translateToEnglish;
 
   function resolveLanguage(language) {
     var raw = String(language || '').trim().replace(/_/g, '-').toLowerCase();
