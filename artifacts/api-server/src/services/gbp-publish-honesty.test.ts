@@ -101,6 +101,21 @@ describe("publishGBPPost (google-service, fetch simule)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("tables Google absentes (42P01, jamais connecte) -> GOOGLE_NOT_CONNECTED (pas GOOGLE_AUTH_FAILED), aucun fetch", async () => {
+    const pgMissing = Object.assign(new Error('relation "google_tokens" does not exist'), { code: "42P01" });
+    mocks.connect.mockResolvedValue({ query: vi.fn().mockRejectedValue(pgMissing), release: vi.fn() });
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+    const r = await (await real())("org-1", "accounts/a/locations/l", { summary: "x" });
+    expect(r).toMatchObject({ ok: false, code: "GOOGLE_NOT_CONNECTED" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("autre erreur SQL (hors table absente) -> toujours GOOGLE_AUTH_FAILED", async () => {
+    mocks.connect.mockResolvedValue({ query: vi.fn().mockRejectedValue(Object.assign(new Error("boom"), { code: "XX000" })), release: vi.fn() });
+    vi.stubGlobal("fetch", vi.fn());
+    expect(await (await real())("org-1", "accounts/a/locations/l", { summary: "x" })).toMatchObject({ ok: false, code: "GOOGLE_AUTH_FAILED" });
+  });
+
   it.each([[503, "GBP_API_UNAVAILABLE"], [429, "GBP_API_RATE_LIMITED"], [403, "GBP_API_FORBIDDEN"], [400, "GBP_API_REJECTED"], [401, "GOOGLE_AUTH_FAILED"]])(
     "HTTP %i -> %s", async (status, code) => {
       connectClient([{ access_token: realGoogle.encryptToken("tok"), expires_at: new Date(Date.now() + 600_000).toISOString() }]);
