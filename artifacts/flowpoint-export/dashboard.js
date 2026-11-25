@@ -2326,7 +2326,27 @@ async function loadData(options = {}) {
       }
     }).catch(() => {}),
     apiFetch('/api/revenue-leak').then(r => {
-      if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.revenueLeak = r; }
+      if (r && typeof r === 'object') {
+        if (!window.FP_DATA) window.FP_DATA = {};
+        const opportunities = Array.isArray(r.opportunities) ? r.opportunities : [];
+        window.FP_DATA.revenueLeak = {
+          ...r, _fromRealData: true, leaks: opportunities, opportunities,
+          financial: r.financial || { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+          attribution: r.attribution || { status: 'insufficient_data', reason: 'no_shared_identifier' },
+          noData: r.noData ?? opportunities.length === 0,
+        };
+      }
+    }).catch(() => {
+      if (!window.FP_DATA) window.FP_DATA = {};
+      window.FP_DATA.revenueLeak = {
+        _fromRealData: true, leaks: [], opportunities: [], summary: null,
+        financial: { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+        attribution: { status: 'insufficient_data', reason: 'no_shared_identifier' },
+        noData: true, error: 'Les événements comportementaux sont temporairement indisponibles.',
+      };
+    }),
+    apiFetch('/api/review-intelligence').then(r => {
+      if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.reviewIntelligence = r; }
     }).catch(() => {}),
     apiFetch('/api/review-intelligence').then(r => {
       if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.reviewIntelligence = r; }
@@ -2447,27 +2467,16 @@ async function loadData(options = {}) {
       recommendations: _iRecs,
     };
   }
-  // Revenue Leak Intelligence — computed from audits + monitors
+  // Revenue Leak — empty until the API supplies observed behavioral events.
   if (!window.FP_DATA.revenueLeak || !window.FP_DATA.revenueLeak._fromRealData) {
-    const _rlLeaks = [];
-    STATE.monitors.filter(m=>m.status==='down').forEach(m => {
-      const _uptime = (m.uptime != null) ? m.uptime : 99;
-      _rlLeaks.push({ id:'rl_mon_'+m.id, type:'availability', title:`Site DOWN : ${m.name}`, monthly:'Pertes directes en cours', severity:'critical', fix:"Résoudre l'incident immédiatement", url:m.url||'' });
-    });
-    STATE.audits.filter(a=>a.speed!=null&&a.speed<50).slice(0,5).forEach(a => {
-      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
-      _rlLeaks.push({ id:'rl_spd_'+a.id, type:'performance', title:`Vitesse critique : ${_d}`, monthly:`~${Math.round((100-a.speed)*15)}€/mois estimés perdus`, severity:'high', fix:'Optimiser images (WebP), activer le cache navigateur, passer à HTTP/2', url:a.url||'' });
-    });
-    STATE.audits.filter(a=>a.score<50).slice(0,5).forEach(a => {
-      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
-      _rlLeaks.push({ id:'rl_seo_'+a.id, type:'seo', title:`Score SEO critique : ${_d}`, monthly:'Trafic organique manqué', severity:'high', fix:'Corriger balises title/meta, liens cassés, contenu dupliqué', url:a.url||'' });
-    });
     window.FP_DATA.revenueLeak = {
       _fromRealData: true,
-      leaks: _rlLeaks,
-      summary: _rlLeaks.length > 0
-        ? { totalMonthly:`${_rlLeaks.length} fuite${_rlLeaks.length>1?'s':''} détectée${_rlLeaks.length>1?'s':''}`, topIssue: _rlLeaks[0]?.type||'performance' }
-        : null,
+      leaks: [],
+      opportunities: [],
+      summary: null,
+      financial: { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+      attribution: { status: 'insufficient_data', reason: 'no_shared_identifier' },
+      noData: true,
     };
   }
 
@@ -10168,6 +10177,15 @@ function renderBilling() {
       { key:'aiGbpPosting', cat:'Local SEO',  name:'AI GBP Posting', icon:'🤖', color:'#22c55e', active:!!(me.addons?.aiGbpPosting), tag:'IA Auto',         roi:'+42% engagement GBP',    desc:'Posts GBP générés automatiquement par IA. Photos optimisées, horaires, et offres.', features:['Posts GBP rédigés et publiés par IA','Calendrier de publication automatique','Adaptation saisonnière et événements','Sélection automatique des meilleures photos','Rapport engagement mensuel'] },
       { key:'reviewIntelligence', cat:'Local SEO',  name:'Review Intelligence', icon:'⭐', color:'#22c55e', active:!!(me.addons?.reviewIntelligence), tag:'Sentiment IA',    roi:'+38% note moyenne',    desc:'IA de sentiment sur vos avis Google. Réponses automatiques et alertes critiques.', features:['Analyse sentiment de chaque avis','Réponses IA personnalisées en 1 clic','Alertes avis négatifs en temps réel','Rapport tendance note mensuel','Score réputation par établissement'] },
       { key:'localDominationMaps', cat:'Local SEO',  name:'Local Domination Maps', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localDominationMaps), tag:'Heatmap',         roi:'Visibilité Maps 360°',    desc:'Heatmaps de visibilité locale. Analysez votre présence dans le Local Pack par zone.', features:['Heatmap de visibilité Maps par zone','Analyse du Local Pack position par position','Comparaison vs concurrents sur la carte','Alertes perte de position Maps','Rapport visibilité locale hebdomadaire'] },
+      // [lot2:localLandingOpportunities]
+      { key:'localLandingOpportunities', gated:true, openFn:'fpOpenLocalLandingOpportunities', cat:'Local SEO', name:'Local Landing Opportunities', icon:'🗺️', color:'#22c55e', active:!!(me.addons?.localLandingOpportunities), tag:'Local SEO', roi:'Recherches locales propices à une page', desc:'Repérez les recherches locales réelles qui justifient une page de service ou de zone.', features:['Opportunités fondées sur les recherches disponibles','Pages de service ou de zone à examiner','Priorisation par opportunité locale'] },
+
+      // [lot2:localPresenceOptimizer]
+      { key:'localPresenceOptimizer', gated:true, openFn:'fpOpenLocalPresenceOptimizer', cat:'Local SEO', name:'Local Presence Optimizer', icon:'📍', color:'#22c55e', active:!!(me.addons?.localPresenceOptimizer), tag:'GBP', roi:'Informations de fiches à compléter', desc:'Priorisez les informations manquantes ou incomplètes sur vos fiches Google Business Profile.', features:['État de complétude des fiches','Priorités fondées sur les données disponibles','Recommandations par établissement'] },
+
+      // [lot2:gbpPerformanceLeads]
+      { key:'gbpPerformanceLeads', gated:true, openFn:'fpOpenGbpPerformanceLeads', cat:'Local SEO', name:'GBP Performance & Leads', icon:'📊', color:'#22c55e', active:!!(me.addons?.gbpPerformanceLeads), tag:'GBP', roi:'Performances et objectifs locaux mesurés', desc:'Suivez les performances réelles de vos fiches Google Business Profile, définissez des objectifs et repérez les baisses d’actions locales.', features:['Statistiques GBP réellement disponibles','Objectifs configurables','Alertes de baisse des actions locales'] },
+
       // ── Conversion ──
       { key:'aiCro', cat:'Conversion', name:'AI CRO Strategist', icon:'📈', color:'#f97316', active:!!(me.addons?.aiCro), tag:'IA',              roi:'+28% taux conversion',    desc:'Stratégiste CRO IA. Recommandations de tests A/B, friction analysis, et UX scoring.', features:['Score UX friction par page automatique','Hypothèses A/B générées par IA','Plan d\'action conversion priorisé','Analyse parcours utilisateur IA','Rapport ROI conversion mensuel'] },
       { key:'behavioralAI', cat:'Conversion', name:'Behavioral AI', icon:'🧠', color:'#f97316', active:!!(me.addons?.behavioralAI), tag:'Ultra',           roi:'Analyse comportement IA', desc:'Heatmaps IA, session replay, et analyse comportementale prédictive en temps réel.', features:['Heatmaps clics/scroll en temps réel','Session replay anonymisé','Analyse comportementale prédictive IA','Segments d\'utilisateurs automatiques','Alertes friction critique instantanées'] },
@@ -10180,6 +10198,9 @@ function renderBilling() {
       { key:'whiteLabel', cat:'Reporting',  name:'White-Label Exports', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
       { key:'agencyPacks', cat:'Reporting',  name:'Agency Reporting Packs', icon:'📦', color:'#eab308', active:!!(me.addons?.agencyPacks), tag:'Agence',          roi:'12 templates pro inclus',    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
       { key:'aiExecutiveReport', cat:'Reporting',  name:'AI Executive Reporting', icon:'📊', color:'#eab308', active:!!(me.addons?.aiExecutiveReport), tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
+      // [lot2:agencyPortfolioPriorities]
+      { key:'agencyPortfolioPriorities', gated:true, openFn:'fpOpenAgencyPortfolioPriorities', cat:'Reporting', name:'Agency Portfolio Priorities', icon:'🗂️', color:'#eab308', active:!!(me.addons?.agencyPortfolioPriorities), tag:'Agence', roi:'Priorisation mesurée des sites clients', desc:'Classez les sites clients selon les audits SEO et les clics organiques GSC réellement mesurés.', features:['Scores et problèmes critiques issus des audits','Clics GSC mesurés sur 30 jours','Pondération de priorité configurable par domaine','Aucune donnée de trafic inventée'] },
+
       // ── IA ──
       { key:'aiForecasting', cat:'IA',         name:'AI Forecasting Engine', icon:'🔮', color:'#8b5cf6', active:!!(me.addons?.aiForecasting), tag:'Prédictif',       roi:'Prévisions 6 mois', desc:'Modèle prédictif IA. Prévisions de trafic, rankings, et croissance sur 6 mois.', features:['Prévisions trafic 6 mois (précision ±8%)','Prévisions rankings par mot-clé','Modèle ML entraîné sur vos données','Alertes risques de baisse anticipés','Rapport prévisionnel PDF mensuel'] },
       { key:'marketIntelligence', cat:'IA',         name:'AI Market Intelligence', icon:'🌐', color:'#8b5cf6', active:!!(me.addons?.marketIntelligence), tag:'Intelligence',    roi:'Veille marché automatique',    desc:'Veille concurrentielle IA. Tendances marché, opportunités, et alertes sectorielles.', features:['Veille concurrentielle IA 24/7','Détection de tendances sectorielles','Alertes nouveaux entrants concurrents','Opportunités de marché automatiques','Newsletter IA hebdomadaire secteur'] },
@@ -14436,7 +14457,7 @@ async function sendAIMessage(text) {
     connectorsActive: (STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length,
     croScore: window.FP_DATA?.cro?.scores?.[0]?.overallScore??null,
     topCroRecs: (window.FP_DATA?.cro?.recommendations||[]).slice(0,3).map(r=>r.title),
-    revenueLeak: (window.FP_DATA?.revenueLeak?.leaks||[]).length,
+    revenueLeak: window.FP_DATA?.revenueLeak?.error ? null : (window.FP_DATA?.revenueLeak?.leaks||[]).length,
   };
 
   // Build conversation history for the API (last 10 exchanges)
@@ -15949,6 +15970,18 @@ const FP_SELF_RENDERED_ADDON_ROUTES = new Set([
 
   // [lot1:conversionOpportunityEngine]
   'conversion-opportunity-engine',
+
+  // [lot2:agencyPortfolioPriorities]
+  'agency-portfolio-priorities',
+
+  // [lot2:localLandingOpportunities]
+  'local-landing-opportunities',
+
+  // [lot2:localPresenceOptimizer]
+  'local-presence-optimizer',
+
+  // [lot2:gbpPerformanceLeads]
+  'gbp-performance-leads',
 ]);
 function _doRender() {
   const page = $('#fp-page');
@@ -16157,6 +16190,46 @@ function _doRender() {
       setTimeout(() => {
         const root = document.getElementById('fp-addon-conversion-opportunity-engine');
         const renderAddon = window.FP_ADDON_RENDERERS?.conversionOpportunityEngine;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
+
+    // [lot2:agencyPortfolioPriorities]
+    case 'agency-portfolio-priorities':
+      html = '<div id="fp-addon-agency-portfolio-priorities"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-agency-portfolio-priorities');
+        const renderAddon = window.FP_ADDON_RENDERERS?.agencyPortfolioPriorities;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
+
+    // [lot2:localLandingOpportunities]
+    case 'local-landing-opportunities':
+      html = '<div id="fp-addon-local-landing-opportunities"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-local-landing-opportunities');
+        const renderAddon = window.FP_ADDON_RENDERERS?.localLandingOpportunities;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
+
+    // [lot2:localPresenceOptimizer]
+    case 'local-presence-optimizer':
+      html = '<div id="fp-addon-local-presence-optimizer"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-local-presence-optimizer');
+        const renderAddon = window.FP_ADDON_RENDERERS?.localPresenceOptimizer;
+        if (root && renderAddon) renderAddon(root);
+      }, 0);
+      break;
+
+    // [lot2:gbpPerformanceLeads]
+    case 'gbp-performance-leads':
+      html = '<div id="fp-addon-gbp-performance-leads"></div>';
+      setTimeout(() => {
+        const root = document.getElementById('fp-addon-gbp-performance-leads');
+        const renderAddon = window.FP_ADDON_RENDERERS?.gbpPerformanceLeads;
         if (root && renderAddon) renderAddon(root);
       }, 0);
       break;
@@ -19636,9 +19709,149 @@ function bindGlobalEvents() {
     'Score de domination :': 'Domination score:',
     'Score de sécurité :': 'Security score:',
     'ex. Score critique restaurant': 'e.g. Critical restaurant score',
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "Site URL required",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "No actionable behavioral signals were found in the last 30 days. These events do not measure revenue.",
+    "Attribution financière : données insuffisantes": "Financial attribution: insufficient data",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Behavioral events use a tracker session identifier; available GA4 revenue is aggregated and cannot be joined exactly. No observed or estimated loss will be shown without this evidence.",
+    "Revenu observé par GA4": "Revenue observed by GA4",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Connect an active GA4 property with a recognized currency to view observed revenue. No loss is estimated.",
+    "Aucune opportunité observée": "No opportunities observed",
+    "{count} opportunités observées": "{count} observed opportunities",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "No euro losses are calculated without revenue data linked to these events.",
+    "Opportunités de conversion — observations comportementales": "Conversion opportunities — behavioral observations",
+    "{events} événements sur {sessions} sessions.": "{events} events across {sessions} sessions.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} events · {sessions} sessions · confidence {confidence} · source {source}",
+    "Revenu": "Revenue",
+    "Corriger point de friction conversion": "Fix conversion friction point",
+    "Corriger": "Fix",
+    "Analyse de page": "Page analysis",
+    "Signal confirmé": "Confirmed signal",
+    "Signal récurrent": "Recurring signal",
+    "Signal à confirmer": "Signal to confirm",
+    "Preuve relevée sur la page": "Evidence found on the page",
+    "{events} événements · {sessions} sessions": "{events} events · {sessions} sessions",
+    "Analyse de la page": "Page analysis",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} H1 headings · {forms} forms · {ctas} calls to action",
+    "Constats de page mesurés uniquement.": "Showing measured page findings only.",
+    "Preuve :": "Evidence:",
+    "Analyse de page indisponible": "Page analysis unavailable",
+    "Aucune recommandation n’est générée sans lecture de la page.": "No recommendations are generated unless the page can be read.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Observations are based on events actually collected. Financial estimates and forecasts remain hidden until conversion or revenue data is linked.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Recommendations will appear after real behavioral signals are collected. No rate or gain is made up.",
+    "Examiner les observations": "Review observations",
+    "Créer une mission": "Create a mission",
+    "Revoir les données": "Review data",
+    "Signaux observés": "Observed signals",
+    "Sessions affectées": "Affected sessions",
+    "sessions distinctes par signal": "distinct sessions per signal",
+    "Confiance élevée": "High confidence",
+    "au moins 30 sessions": "at least 30 sessions",
+    "Gain financier": "Financial gain",
+    "aucune conversion/revenu attribué": "no attributed conversions or revenue",
+    "Analyse indisponible.": "Analysis unavailable.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "No friction point detected by the automatic checks on this page.",
+    "Signaux comportementaux et actions CRO": "Behavioral signals and CRO actions",
+    "Analyser le site actif": "Analyze active site",
+    "Mise en œuvre :": "Implementation:",
+    "Source :": "Source:",
+    "Optimiser la conversion": "Optimize conversion",
+    "Mission": "Mission",
+    "Statut de la recommandation": "Recommendation status",
+    "🧪 Expériences A/B": "🧪 A/B experiments",
+    "Aucune expérience": "No experiments yet",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Create a draft. It cannot start until the new snippet confirms data collection.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} exposures / {aConversions} conversions · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Significant result · p={pValue} · winner {winner}",
+    "Non concluant · p={pValue}": "Inconclusive · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Insufficient data — 30 exposures per variant are required",
+    "Brouillon": "Draft",
+    "Arrêté": "Stopped",
+    "Démarrer": "Start",
+    "{count} clients": "{count} customers",
+    "🎯 Objectif M+3 :": "🎯 Month 3 target:",
+    "clients/mois": "customers/month",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Reduce mobile bounce rate from 32% to 22% = 8 more estimated customers/month",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 points/month on average · Consistent with current CRO actions",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Without form optimization, the estimated ceiling is 0.38% (vs. 0.41% target)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Unmeasured; no revenue is attributed to observed events",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "No forecast is shown: observed conversions and a sufficient baseline period are required.",
+    "Fuite détectée": "Leak detected",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "No financial loss is shown in preview without measured revenue data.",
+    "{amount}€/mois": "€{amount}/month",
+    "Aucun revenu attribué aux événements observés": "No revenue attributed to observed events",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Select a saved site to isolate Behavioral AI data.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Results calculated on a capped sample of recent events.",
+    "sessions avec page vue sur cette période": "sessions with page views in this period",
+    "Aucune soumission de formulaire mesurable.": "No measurable form submission.",
+    "des sessions observées ont soumis un formulaire": "of observed sessions submitted a form",
+    "Taux d’abandon formulaire le plus élevé": "Highest form abandonment rate",
+    "Recommandations fondées sur les événements": "Event-based recommendations",
+    "Chargement des données comportementales…": "Loading behavioral data...",
+    "Action": "Action",
+    "Pages concernées": "Pages involved",
+    "Preuve observée": "Observed evidence",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "No signal currently exceeds detection thresholds.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Select a site and wait for the first snippet events.",
+    "Sessions avec page vue": "Sessions with page views",
+    "Pages visitées": "Pages visited",
+    "Événements page_view observés": "page_view events observed",
+    "Soumissions de formulaire": "Form submissions",
+    "des sessions": "of sessions",
+    "Abandons de formulaire": "Form abandonment",
+    "Événements form_abandon observés": "form_abandon events observed",
+    "Comparaison avec la période précédente": "Comparison with the previous period",
+    "Sessions avec formulaire envoyé": "Sessions with a form submission",
+    "Valeurs précédentes · variation par rapport à la période courante": "Previous values · variation from current period",
+    "Comparaison limitée par le plafond de données.": "Comparison limited by data cap.",
+    "Comparaison indisponible sans site sélectionné.": "Comparison unavailable without a selected site.",
+    "Référents observés": "Referrers observed",
+    "Aucun référent externe mesurable dans les événements reçus.": "No measurable external referrers in received events.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "UTM campaigns and new/returning visitor distinction are not collected.",
+    "Parcours mesuré — page vue vers formulaire": "Measured journey — page view to form",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "No measurable journey for this period. The snippet must collect page_view and form_submit.",
+    "de perte mesurée à l’étape": "drop-off measured at step",
+    "Parcours les plus fréquents": "Most frequent journeys",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Transitions will appear after multiple page views are collected in a session.",
+    "Pages d’entrée": "Landing pages",
+    "Pages de sortie": "Exit pages",
+    "Frottements observés": "Friction observed",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "No friction clicks or form abandons observed for the period.",
+    "Non mesuré avec les événements actuels": "Not measured with current events",
+    "Créer et analyser un funnel comportemental": "Create and analyze a behavioral funnel",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Enter 2 to 6 events in order. Optional: add :/path to limit a step to a specific page.",
+    "depuis l’étape précédente": "from previous step",
+    "Période précédente": "Previous period",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Result limited to the most recent events (safety cap reached).",
+    "Aucune donnée de page disponible": "No page data available",
+    "Appareil inconnu": "Unknown device",
+    "sessions observées": "sessions observed",
+    "Un funnel doit contenir de 2 à 6 étapes.": "A funnel must contain 2 to 6 steps.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Select a site before analyzing a funnel.",
+    "Insights IA générés à partir des événements observés": "AI insights generated from observed events",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Measured signals generated; AI recommendations unavailable",
+    "Erreur": "Error",
+    "Données CRO indisponibles": "CRO data is unavailable",
+    "{count} observations CRO analysées": "{count} CRO observations analyzed",
+    "Statut non enregistré": "Status was not saved",
+    "Les événements comportementaux sont indisponibles.": "Behavioral events are unavailable.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Behavioral events are temporarily unavailable.",
+    "À traiter": "To do",
+    "Appliquée": "Applied",
+    "Écartée": "Dismissed",
   };
   // ── FP_I18N_EN_EXTRA — auto-generated sweep of previously untranslated FR strings (task: 100% dashboard translation) ──
   var FP_I18N_EN_EXTRA = {
+    "Cette intégration CRM n’est pas encore disponible.": "This CRM integration is not available yet.",
+    "La liste des CRM disponibles est momentanément indisponible.": "The list of available CRMs is temporarily unavailable.",
+    "Indisponible pour le moment": "Unavailable for now",
+    "Données GA4 requises": "GA4 data required",
+    "Données de revenu requises": "Revenue data required",
+    "Conv. prévue": "Forecast conv.",
+    "Revenue prévu": "Forecast revenue",
+    "30 jours · GA4": "30 days · GA4",
+    "90 jours · GA4": "90 days · GA4",
+    "Revenu": "Revenue",
     "&#128508; Domination territoriale — 2 zones dominées · 3 à conquérir": "&#128508; Territorial domination — 2 areas dominated · 3 to conquer",
     "&#8593; +1 ce mois · Score 74/100": "&#8593; +1 this month · Score 74/100",
     "' : 'Sur la base d'une estimation par défaut de": "' : 'Based on a default estimate of",
@@ -21211,7 +21424,7 @@ function bindGlobalEvents() {
     "🔄 Réessayer": "🔄 Retry",
     "Retirer": "Quitar",
     "Voir tous": "Ver todos",
-    "Indisponible": "No disponible",
+    "Indisponible": "Unavailable",
     "Score indisponible": "Puntuación no disponible",
     "Indisponible — relancez une analyse": "No disponible — vuelva a ejecutar un análisis",
     "Points à vérifier": "Puntos a verificar",
@@ -21516,6 +21729,16 @@ function bindGlobalEvents() {
   var FP_I18N = {
     en: FP_I18N_EN,
     es: {
+    "Cette intégration CRM n’est pas encore disponible.": "Esta integración de CRM aún no está disponible.",
+    "La liste des CRM disponibles est momentanément indisponible.": "La lista de CRM disponibles no está disponible temporalmente.",
+    "Indisponible pour le moment": "No disponible por ahora",
+    "Données GA4 requises": "Se requieren datos de GA4",
+    "Données de revenu requises": "Se requieren datos de ingresos",
+    "Conv. prévue": "Conv. prevista",
+    "Revenue prévu": "Ingresos previstos",
+    "30 jours · GA4": "30 días · GA4",
+    "90 jours · GA4": "90 días · GA4",
+    "Revenu": "Ingresos",
     "Sites critiques à corriger": "Sitios críticos a corregir",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Algunos sitios tienen una puntuación SEO inferior a 50/100. Corrige primero las etiquetas faltantes y la velocidad móvil.",
     "À prioriser": "A priorizar",
@@ -21671,7 +21894,7 @@ function bindGlobalEvents() {
     "Analyser sentiment": "Analizar sentimiento",
     "Retirer": "Verwijderen",
     "Voir tous": "Alles bekijken",
-    "Indisponible": "Niet beschikbaar",
+    "Indisponible": "No disponible",
     "Score indisponible": "Score niet beschikbaar",
     "Indisponible — relancez une analyse": "Niet beschikbaar — voer een nieuwe analyse uit",
     "Points à vérifier": "Te controleren punten",
@@ -24475,8 +24698,149 @@ function bindGlobalEvents() {
     "Priorité locale": "Prioridad local",
     "Désactivée": "Desactivada",
     "Agressive": "Agresiva",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "URL del sitio requerida",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "No se encontraron señales de comportamiento utilizables en los últimos 30 días. Estos eventos no miden los ingresos.",
+    "Attribution financière : données insuffisantes": "Atribución financiera: datos insuficientes",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Los eventos de comportamiento usan un identificador de sesión del tracker; los ingresos de GA4 disponibles están agregados y no permiten una unión exacta. No se mostrará ninguna pérdida observada ni estimada sin esta prueba.",
+    "Revenu observé par GA4": "Ingresos observados por GA4",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Conecta una propiedad GA4 activa con una moneda reconocida para ver los ingresos observados. No se estima ninguna pérdida.",
+    "Aucune opportunité observée": "Ninguna oportunidad observada",
+    "{count} opportunités observées": "{count} oportunidades observadas",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "No se calcula ninguna pérdida en euros sin datos de ingresos vinculados a estos eventos.",
+    "Opportunités de conversion — observations comportementales": "Oportunidades de conversión — observaciones de comportamiento",
+    "{events} événements sur {sessions} sessions.": "{events} eventos en {sessions} sesiones.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} eventos · {sessions} sesiones · confianza {confidence} · fuente {source}",
+    "Revenu": "Ingresos",
+    "Corriger point de friction conversion": "Corregir punto de fricción de conversión",
+    "Corriger": "Corregir",
+    "Analyse de page": "Análisis de página",
+    "Signal confirmé": "Señal confirmada",
+    "Signal récurrent": "Señal recurrente",
+    "Signal à confirmer": "Señal por confirmar",
+    "Preuve relevée sur la page": "Evidencia encontrada en la página",
+    "{events} événements · {sessions} sessions": "{events} eventos · {sessions} sesiones",
+    "Analyse de la page": "Análisis de la página",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} títulos H1 · {forms} formularios · {ctas} llamadas a la acción",
+    "Constats de page mesurés uniquement.": "Solo se muestran hallazgos de página medidos.",
+    "Preuve :": "Evidencia:",
+    "Analyse de page indisponible": "Análisis de página no disponible",
+    "Aucune recommandation n’est générée sans lecture de la page.": "No se genera ninguna recomendación sin poder leer la página.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Observaciones basadas en los eventos realmente recopilados. Las estimaciones financieras y las previsiones permanecen ocultas mientras no haya conversiones ni datos de ingresos vinculados.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Las recomendaciones aparecerán tras recopilar señales de comportamiento reales. No se inventa ninguna tasa ni ganancia.",
+    "Examiner les observations": "Revisar las observaciones",
+    "Créer une mission": "Crear una misión",
+    "Revoir les données": "Revisar los datos",
+    "Signaux observés": "Señales observadas",
+    "Sessions affectées": "Sesiones afectadas",
+    "sessions distinctes par signal": "sesiones distintas por señal",
+    "Confiance élevée": "Confianza alta",
+    "au moins 30 sessions": "al menos 30 sesiones",
+    "Gain financier": "Ganancia financiera",
+    "aucune conversion/revenu attribué": "ninguna conversión ni ingreso atribuido",
+    "Analyse indisponible.": "Análisis no disponible.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Ningún punto de fricción detectado por los controles automáticos en esta página.",
+    "Signaux comportementaux et actions CRO": "Señales de comportamiento y acciones CRO",
+    "Analyser le site actif": "Analizar el sitio activo",
+    "Mise en œuvre :": "Implementación:",
+    "Source :": "Fuente:",
+    "Optimiser la conversion": "Optimizar la conversión",
+    "Mission": "Misión",
+    "Statut de la recommandation": "Estado de la recomendación",
+    "🧪 Expériences A/B": "🧪 Experimentos A/B",
+    "Aucune expérience": "Ningún experimento",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Crea un borrador. El inicio permanece bloqueado hasta que el nuevo snippet confirme su recopilación.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} exposiciones / {aConversions} conversiones · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Resultado significativo · p={pValue} · ganador {winner}",
+    "Non concluant · p={pValue}": "No concluyente · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Datos insuficientes — se requieren 30 exposiciones por variante",
+    "Brouillon": "Borrador",
+    "Arrêté": "Detenido",
+    "Démarrer": "Iniciar",
+    "📈 Prévision de conversion": "📈 Previsión de conversión",
+    "{count} clients": "{count} clientes",
+    "🎯 Objectif M+3 :": "🎯 Objetivo M+3:",
+    "clients/mois": "clientes/mes",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Reducir la tasa de rebote móvil del 32% al 22% = +8 clientes/mes estimados",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 pts/mes de media · Coherente con las acciones CRO en curso",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Sin optimización del formulario, techo estimado en 0.38% (vs 0.41% objetivo)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "No medido; ningún ingreso se atribuye a los eventos observados",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "No se muestra ninguna previsión: se necesitan conversiones observadas y un período de referencia suficiente.",
+    "Fuite détectée": "Fuga detectada",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "No se muestra ninguna pérdida financiera en la vista previa sin datos de ingresos medidos.",
+    "{amount}€/mois": "{amount}€/mes",
+    "Aucun revenu attribué aux événements observés": "Ningún ingreso atribuido a los eventos observados",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Selecciona un sitio registrado para aislar los datos de Behavioral AI.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Resultados calculados sobre una muestra limitada de eventos recientes.",
+    "sessions avec page vue sur cette période": "sesiones con página vista en este período",
+    "Aucune soumission de formulaire mesurable.": "Ningún envío de formulario medible.",
+    "des sessions observées ont soumis un formulaire": "de las sesiones observadas enviaron un formulario",
+    "Taux d’abandon formulaire le plus élevé": "Tasa de abandono de formulario más alta",
+    "Recommandations fondées sur les événements": "Recomendaciones basadas en eventos",
+    "Chargement des données comportementales…": "Cargando datos de comportamiento…",
+    "Action": "Acción",
+    "Pages concernées": "Páginas afectadas",
+    "Preuve observée": "Evidencia observada",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Ninguna señal supera actualmente los umbrales de detección.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Selecciona un sitio y espera los primeros eventos del snippet.",
+    "Sessions avec page vue": "Sesiones con página vista",
+    "Pages visitées": "Páginas visitadas",
+    "Événements page_view observés": "Eventos page_view observados",
+    "Soumissions de formulaire": "Envíos de formulario",
+    "des sessions": "de las sesiones",
+    "Abandons de formulaire": "Abandonos de formulario",
+    "Événements form_abandon observés": "Eventos form_abandon observados",
+    "Comparaison avec la période précédente": "Comparación con el período anterior",
+    "Sessions avec formulaire envoyé": "Sesiones con formulario enviado",
+    "Valeurs précédentes · variation par rapport à la période courante": "Valores anteriores · variación respecto al período actual",
+    "Comparaison limitée par le plafond de données.": "Comparación limitada por el tope de datos.",
+    "Comparaison indisponible sans site sélectionné.": "Comparación no disponible sin un sitio seleccionado.",
+    "Référents observés": "Referentes observados",
+    "Aucun référent externe mesurable dans les événements reçus.": "Ningún referente externo medible en los eventos recibidos.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "Las campañas UTM y la distinción entre nuevos y recurrentes no se recopilan.",
+    "Parcours mesuré — page vue vers formulaire": "Recorrido medido — página vista hacia formulario",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "Ningún recorrido medible en este período. El snippet debe recopilar page_view y form_submit.",
+    "de perte mesurée à l’étape": "de pérdida medida en la etapa",
+    "Parcours les plus fréquents": "Recorridos más frecuentes",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Las transiciones aparecerán tras recopilar varias páginas vistas en una sesión.",
+    "Pages d’entrée": "Páginas de entrada",
+    "Pages de sortie": "Páginas de salida",
+    "Frottements observés": "Fricciones observadas",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "Ningún clic de fricción ni abandono de formulario observado en el período.",
+    "Non mesuré avec les événements actuels": "No medido con los eventos actuales",
+    "Créer et analyser un funnel comportemental": "Crear y analizar un funnel de comportamiento",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Introduce de 2 a 6 eventos en orden. Opcional: añade :/ruta para limitar una etapa a una página.",
+    "depuis l’étape précédente": "desde la etapa anterior",
+    "Période précédente": "Período anterior",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Resultado limitado a los eventos más recientes (tope de seguridad alcanzado).",
+    "Aucune donnée de page disponible": "Ningún dato de página disponible",
+    "Appareil inconnu": "Dispositivo desconocido",
+    "sessions observées": "sesiones observadas",
+    "Un funnel doit contenir de 2 à 6 étapes.": "Un funnel debe contener de 2 a 6 etapas.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Selecciona un sitio antes de analizar un funnel.",
+    "Insights IA générés à partir des événements observés": "Insights IA generados a partir de los eventos observados",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Señales medidas generadas; recomendaciones IA no disponibles",
+    "Erreur": "Error",
+    "Données CRO indisponibles": "Datos CRO no disponibles",
+    "{count} observations CRO analysées": "{count} observaciones CRO analizadas",
+    "Statut non enregistré": "Estado no guardado",
+    "Les événements comportementaux sont indisponibles.": "Los eventos de comportamiento no están disponibles.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Los eventos de comportamiento no están disponibles temporalmente.",
+    "À traiter": "Por tratar",
+    "Appliquée": "Aplicada",
+    "Écartée": "Descartada",
     },
     de: {
+    "Cette intégration CRM n’est pas encore disponible.": "Diese CRM-Integration ist noch nicht verfügbar.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Die Liste der verfügbaren CRMs ist vorübergehend nicht verfügbar.",
+    "Indisponible pour le moment": "Derzeit nicht verfügbar",
+    "Données GA4 requises": "GA4-Daten erforderlich",
+    "Données de revenu requises": "Umsatzdaten erforderlich",
+    "Conv. prévue": "Prognost. Konv.",
+    "Revenue prévu": "Prognost. Umsatz",
+    "30 jours · GA4": "30 Tage · GA4",
+    "90 jours · GA4": "90 Tage · GA4",
+    "Revenu": "Umsatz",
     "Sites critiques à corriger": "Kritische Websites zu beheben",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Einige Websites haben einen SEO-Score unter 50/100. Beheben Sie zuerst fehlende Tags und die mobile Geschwindigkeit.",
     "À prioriser": "Zu priorisieren",
@@ -27409,8 +27773,149 @@ function bindGlobalEvents() {
     "Priorité locale": "Lokale Priorität",
     "Désactivée": "Deaktiviert",
     "Agressive": "Aggressiv",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "Website-URL erforderlich",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "In den letzten 30 Tagen wurden keine verwertbaren Verhaltenssignale gefunden. Diese Ereignisse messen keinen Umsatz.",
+    "Attribution financière : données insuffisantes": "Finanzielle Zuordnung: unzureichende Daten",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Verhaltensereignisse verwenden eine Sitzungskennung des Trackers; die verfügbaren GA4-Umsätze sind aggregiert und lassen keine exakte Verknüpfung zu. Ohne diesen Nachweis wird kein beobachteter oder geschätzter Verlust angezeigt.",
+    "Revenu observé par GA4": "Von GA4 beobachteter Umsatz",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Verbinden Sie eine aktive GA4-Property mit einer erkannten Währung, um den beobachteten Umsatz anzuzeigen. Es wird kein Verlust geschätzt.",
+    "Aucune opportunité observée": "Keine Chancen beobachtet",
+    "{count} opportunités observées": "{count} beobachtete Chancen",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "Ohne mit diesen Ereignissen verknüpfte Umsatzdaten wird kein Euro-Verlust berechnet.",
+    "Opportunités de conversion — observations comportementales": "Conversion-Chancen — Verhaltensbeobachtungen",
+    "{events} événements sur {sessions} sessions.": "{events} Ereignisse in {sessions} Sitzungen.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} Ereignisse · {sessions} Sitzungen · Konfidenz {confidence} · Quelle {source}",
+    "Revenu": "Umsatz",
+    "Corriger point de friction conversion": "Conversion-Reibungspunkt beheben",
+    "Corriger": "Beheben",
+    "Analyse de page": "Seitenanalyse",
+    "Signal confirmé": "Bestätigtes Signal",
+    "Signal récurrent": "Wiederkehrendes Signal",
+    "Signal à confirmer": "Zu bestätigendes Signal",
+    "Preuve relevée sur la page": "Auf der Seite festgestellter Nachweis",
+    "{events} événements · {sessions} sessions": "{events} Ereignisse · {sessions} Sitzungen",
+    "Analyse de la page": "Analyse der Seite",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} H1-Überschriften · {forms} Formulare · {ctas} Handlungsaufforderungen",
+    "Constats de page mesurés uniquement.": "Es werden nur gemessene Seitenbefunde angezeigt.",
+    "Preuve :": "Nachweis:",
+    "Analyse de page indisponible": "Seitenanalyse nicht verfügbar",
+    "Aucune recommandation n’est générée sans lecture de la page.": "Ohne Lesen der Seite werden keine Empfehlungen erzeugt.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Beobachtungen auf Basis tatsächlich erfasster Ereignisse. Finanzielle Schätzungen und Prognosen bleiben ausgeblendet, solange keine Conversion oder Umsatzdaten verknüpft sind.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Empfehlungen erscheinen, sobald echte Verhaltenssignale erfasst wurden. Es werden keine Raten oder Gewinne erfunden.",
+    "Examiner les observations": "Beobachtungen prüfen",
+    "Créer une mission": "Mission erstellen",
+    "Revoir les données": "Daten prüfen",
+    "Signaux observés": "Beobachtete Signale",
+    "Sessions affectées": "Betroffene Sitzungen",
+    "sessions distinctes par signal": "eindeutige Sitzungen pro Signal",
+    "Confiance élevée": "Hohe Konfidenz",
+    "au moins 30 sessions": "mindestens 30 Sitzungen",
+    "Gain financier": "Finanzieller Gewinn",
+    "aucune conversion/revenu attribué": "keine Conversion bzw. kein Umsatz zugeordnet",
+    "Analyse indisponible.": "Analyse nicht verfügbar.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Die automatischen Prüfungen haben auf dieser Seite keinen Reibungspunkt festgestellt.",
+    "Signaux comportementaux et actions CRO": "Verhaltenssignale und CRO-Maßnahmen",
+    "Analyser le site actif": "Aktive Website analysieren",
+    "Mise en œuvre :": "Umsetzung:",
+    "Source :": "Quelle:",
+    "Optimiser la conversion": "Conversion optimieren",
+    "Mission": "Mission",
+    "Statut de la recommandation": "Status der Empfehlung",
+    "🧪 Expériences A/B": "🧪 A/B-Experimente",
+    "Aucune expérience": "Keine Experimente",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Erstellen Sie einen Entwurf. Der Start bleibt gesperrt, bis das neue Snippet die Datenerfassung bestätigt hat.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} Ausspielungen / {aConversions} Conversions · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Signifikantes Ergebnis · p={pValue} · Gewinner {winner}",
+    "Non concluant · p={pValue}": "Nicht aussagekräftig · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Unzureichende Daten — 30 Ausspielungen pro Variante erforderlich",
+    "Brouillon": "Entwurf",
+    "Arrêté": "Gestoppt",
+    "Démarrer": "Starten",
+    "📈 Prévision de conversion": "📈 Conversion-Prognose",
+    "{count} clients": "{count} Kunden",
+    "🎯 Objectif M+3 :": "🎯 Ziel M+3:",
+    "clients/mois": "Kunden/Monat",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Mobile Absprungrate von 32 % auf 22 % senken = geschätzt +8 Kunden/Monat",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 Pkt./Monat im Schnitt · Im Einklang mit den laufenden CRO-Maßnahmen",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Ohne Formularoptimierung liegt die geschätzte Obergrenze bei 0.38 % (statt 0.41 % Ziel)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Nicht gemessen; den beobachteten Ereignissen wird kein Umsatz zugeordnet",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "Es wird keine Prognose angezeigt: Es sind beobachtete Conversions und ein ausreichender Referenzzeitraum nötig.",
+    "Fuite détectée": "Leck erkannt",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "In der Vorschau wird ohne gemessene Umsatzdaten kein finanzieller Verlust angezeigt.",
+    "{amount}€/mois": "{amount} €/Monat",
+    "Aucun revenu attribué aux événements observés": "Den beobachteten Ereignissen wird kein Umsatz zugeordnet",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Wählen Sie eine registrierte Website aus, um die Behavioral-AI-Daten zu isolieren.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Ergebnisse auf einer begrenzten Stichprobe aktueller Ereignisse berechnet.",
+    "sessions avec page vue sur cette période": "Sitzungen mit Seitenaufruf in diesem Zeitraum",
+    "Aucune soumission de formulaire mesurable.": "Keine messbare Formularübermittlung.",
+    "des sessions observées ont soumis un formulaire": "der beobachteten Sitzungen haben ein Formular abgeschickt",
+    "Taux d’abandon formulaire le plus élevé": "Höchste Formularabbruchrate",
+    "Recommandations fondées sur les événements": "Auf Ereignissen basierende Empfehlungen",
+    "Chargement des données comportementales…": "Verhaltensdaten werden geladen…",
+    "Action": "Maßnahme",
+    "Pages concernées": "Betroffene Seiten",
+    "Preuve observée": "Beobachteter Nachweis",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Derzeit überschreitet kein Signal die Erkennungsschwellen.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Wählen Sie eine Website aus und warten Sie auf die ersten Snippet-Ereignisse.",
+    "Sessions avec page vue": "Sitzungen mit Seitenaufruf",
+    "Pages visitées": "Besuchte Seiten",
+    "Événements page_view observés": "Beobachtete page_view-Ereignisse",
+    "Soumissions de formulaire": "Formularübermittlungen",
+    "des sessions": "der Sitzungen",
+    "Abandons de formulaire": "Formularabbrüche",
+    "Événements form_abandon observés": "Beobachtete form_abandon-Ereignisse",
+    "Comparaison avec la période précédente": "Vergleich mit dem Vorzeitraum",
+    "Sessions avec formulaire envoyé": "Sitzungen mit abgeschicktem Formular",
+    "Valeurs précédentes · variation par rapport à la période courante": "Vorherige Werte · Veränderung gegenüber dem aktuellen Zeitraum",
+    "Comparaison limitée par le plafond de données.": "Vergleich durch die Datenobergrenze eingeschränkt.",
+    "Comparaison indisponible sans site sélectionné.": "Vergleich ohne ausgewählte Website nicht verfügbar.",
+    "Référents observés": "Beobachtete Referrer",
+    "Aucun référent externe mesurable dans les événements reçus.": "Keine messbaren externen Referrer in den empfangenen Ereignissen.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "UTM-Kampagnen und die Unterscheidung zwischen neuen und wiederkehrenden Besuchern werden nicht erfasst.",
+    "Parcours mesuré — page vue vers formulaire": "Gemessener Pfad — Seitenaufruf bis Formular",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "Kein messbarer Pfad in diesem Zeitraum. Das Snippet muss page_view und form_submit erfassen.",
+    "de perte mesurée à l’étape": "gemessener Verlust bei Schritt",
+    "Parcours les plus fréquents": "Häufigste Pfade",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Übergänge erscheinen, sobald mehrere Seitenaufrufe in einer Sitzung erfasst wurden.",
+    "Pages d’entrée": "Einstiegsseiten",
+    "Pages de sortie": "Ausstiegsseiten",
+    "Frottements observés": "Beobachtete Reibungspunkte",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "Im Zeitraum wurden keine Frustklicks und keine Formularabbrüche beobachtet.",
+    "Non mesuré avec les événements actuels": "Mit den aktuellen Ereignissen nicht messbar",
+    "Créer et analyser un funnel comportemental": "Verhaltens-Funnel erstellen und analysieren",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Geben Sie 2 bis 6 Ereignisse der Reihe nach ein. Optional: :/pfad anhängen, um einen Schritt auf eine Seite zu beschränken.",
+    "depuis l’étape précédente": "seit dem vorherigen Schritt",
+    "Période précédente": "Vorheriger Zeitraum",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Ergebnis auf die jüngsten Ereignisse beschränkt (Sicherheitsobergrenze erreicht).",
+    "Aucune donnée de page disponible": "Keine Seitendaten verfügbar",
+    "Appareil inconnu": "Unbekanntes Gerät",
+    "sessions observées": "beobachtete Sitzungen",
+    "Un funnel doit contenir de 2 à 6 étapes.": "Ein Funnel muss 2 bis 6 Schritte enthalten.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Wählen Sie eine Website aus, bevor Sie einen Funnel analysieren.",
+    "Insights IA générés à partir des événements observés": "KI-Insights aus beobachteten Ereignissen erzeugt",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Gemessene Signale erzeugt; KI-Empfehlungen nicht verfügbar",
+    "Erreur": "Fehler",
+    "Données CRO indisponibles": "CRO-Daten nicht verfügbar",
+    "{count} observations CRO analysées": "{count} CRO-Beobachtungen analysiert",
+    "Statut non enregistré": "Status nicht gespeichert",
+    "Les événements comportementaux sont indisponibles.": "Die Verhaltensereignisse sind nicht verfügbar.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Die Verhaltensereignisse sind vorübergehend nicht verfügbar.",
+    "À traiter": "Zu erledigen",
+    "Appliquée": "Umgesetzt",
+    "Écartée": "Verworfen",
     },
     it: {
+    "Cette intégration CRM n’est pas encore disponible.": "Questa integrazione CRM non è ancora disponibile.",
+    "La liste des CRM disponibles est momentanément indisponible.": "L’elenco dei CRM disponibili è temporaneamente non disponibile.",
+    "Indisponible pour le moment": "Al momento non disponibile",
+    "Données GA4 requises": "Dati GA4 necessari",
+    "Données de revenu requises": "Dati sui ricavi necessari",
+    "Conv. prévue": "Conv. prevista",
+    "Revenue prévu": "Ricavi previsti",
+    "30 jours · GA4": "30 giorni · GA4",
+    "90 jours · GA4": "90 giorni · GA4",
+    "Revenu": "Ricavi",
     "Sites critiques à corriger": "Siti critici da correggere",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Alcuni siti hanno un punteggio SEO inferiore a 50/100. Correggi prima i tag mancanti e la velocità mobile.",
     "À prioriser": "Da prioritizzare",
@@ -30362,8 +30867,149 @@ function bindGlobalEvents() {
     "Priorité locale": "Priorità locale",
     "Désactivée": "Disattivata",
     "Agressive": "Aggressiva",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "URL del sito obbligatorio",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "Nessun segnale comportamentale utilizzabile negli ultimi 30 giorni. Questi eventi non misurano i ricavi.",
+    "Attribution financière : données insuffisantes": "Attribuzione finanziaria: dati insufficienti",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Gli eventi comportamentali usano un identificativo di sessione del tracker; i ricavi GA4 disponibili sono aggregati e non consentono un collegamento esatto. Nessuna perdita osservata o stimata verrà mostrata senza questa prova.",
+    "Revenu observé par GA4": "Ricavi osservati da GA4",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Collega una proprietà GA4 attiva con una valuta riconosciuta per visualizzare i ricavi osservati. Nessuna perdita viene stimata.",
+    "Aucune opportunité observée": "Nessuna opportunità osservata",
+    "{count} opportunités observées": "{count} opportunità osservate",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "Nessuna perdita in euro viene calcolata senza dati di ricavo collegati a questi eventi.",
+    "Opportunités de conversion — observations comportementales": "Opportunità di conversione — osservazioni comportamentali",
+    "{events} événements sur {sessions} sessions.": "{events} eventi su {sessions} sessioni.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} eventi · {sessions} sessioni · affidabilità {confidence} · fonte {source}",
+    "Revenu": "Ricavi",
+    "Corriger point de friction conversion": "Correggere il punto di attrito della conversione",
+    "Corriger": "Correggi",
+    "Analyse de page": "Analisi della pagina",
+    "Signal confirmé": "Segnale confermato",
+    "Signal récurrent": "Segnale ricorrente",
+    "Signal à confirmer": "Segnale da confermare",
+    "Preuve relevée sur la page": "Prova rilevata sulla pagina",
+    "{events} événements · {sessions} sessions": "{events} eventi · {sessions} sessioni",
+    "Analyse de la page": "Analisi della pagina",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} titoli H1 · {forms} moduli · {ctas} call to action",
+    "Constats de page mesurés uniquement.": "Vengono mostrati solo i rilievi di pagina misurati.",
+    "Preuve :": "Prova:",
+    "Analyse de page indisponible": "Analisi della pagina non disponibile",
+    "Aucune recommandation n’est générée sans lecture de la page.": "Nessuna raccomandazione viene generata senza la lettura della pagina.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Osservazioni basate sugli eventi effettivamente raccolti. Le stime finanziarie e le previsioni restano nascoste finché non sono collegati conversioni o dati di ricavo.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Le raccomandazioni compariranno dopo la raccolta di segnali comportamentali reali. Nessun tasso o guadagno viene inventato.",
+    "Examiner les observations": "Esamina le osservazioni",
+    "Créer une mission": "Crea una missione",
+    "Revoir les données": "Rivedi i dati",
+    "Signaux observés": "Segnali osservati",
+    "Sessions affectées": "Sessioni interessate",
+    "sessions distinctes par signal": "sessioni distinte per segnale",
+    "Confiance élevée": "Affidabilità alta",
+    "au moins 30 sessions": "almeno 30 sessioni",
+    "Gain financier": "Guadagno finanziario",
+    "aucune conversion/revenu attribué": "nessuna conversione o ricavo attribuito",
+    "Analyse indisponible.": "Analisi non disponibile.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Nessun punto di attrito rilevato dai controlli automatici su questa pagina.",
+    "Signaux comportementaux et actions CRO": "Segnali comportamentali e azioni CRO",
+    "Analyser le site actif": "Analizza il sito attivo",
+    "Mise en œuvre :": "Implementazione:",
+    "Source :": "Fonte:",
+    "Optimiser la conversion": "Ottimizza la conversione",
+    "Mission": "Missione",
+    "Statut de la recommandation": "Stato della raccomandazione",
+    "🧪 Expériences A/B": "🧪 Esperimenti A/B",
+    "Aucune expérience": "Nessun esperimento",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Crea una bozza. L'avvio resta bloccato finché il nuovo snippet non conferma la raccolta dei dati.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} esposizioni / {aConversions} conversioni · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Risultato significativo · p={pValue} · vincitore {winner}",
+    "Non concluant · p={pValue}": "Non conclusivo · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Dati insufficienti — servono 30 esposizioni per variante",
+    "Brouillon": "Bozza",
+    "Arrêté": "Interrotto",
+    "Démarrer": "Avvia",
+    "📈 Prévision de conversion": "📈 Previsione di conversione",
+    "{count} clients": "{count} clienti",
+    "🎯 Objectif M+3 :": "🎯 Obiettivo M+3:",
+    "clients/mois": "clienti/mese",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Ridurre la frequenza di rimbalzo da mobile dal 32% al 22% = +8 clienti/mese stimati",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 pt/mese in media · Coerente con le azioni CRO in corso",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Senza ottimizzazione del modulo, tetto stimato allo 0.38% (contro lo 0.41% previsto)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Non misurato; nessun ricavo è attribuito agli eventi osservati",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "Nessuna previsione mostrata: servono conversioni osservate e un periodo di riferimento sufficiente.",
+    "Fuite détectée": "Perdita rilevata",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "Nessuna perdita finanziaria viene mostrata nell'anteprima senza dati di ricavo misurati.",
+    "{amount}€/mois": "{amount}€/mese",
+    "Aucun revenu attribué aux événements observés": "Nessun ricavo attribuito agli eventi osservati",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Seleziona un sito registrato per isolare i dati di Behavioral AI.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Risultati calcolati su un campione limitato di eventi recenti.",
+    "sessions avec page vue sur cette période": "sessioni con visualizzazione di pagina in questo periodo",
+    "Aucune soumission de formulaire mesurable.": "Nessun invio di modulo misurabile.",
+    "des sessions observées ont soumis un formulaire": "delle sessioni osservate ha inviato un modulo",
+    "Taux d’abandon formulaire le plus élevé": "Tasso di abbandono del modulo più alto",
+    "Recommandations fondées sur les événements": "Raccomandazioni basate sugli eventi",
+    "Chargement des données comportementales…": "Caricamento dei dati comportamentali…",
+    "Action": "Azione",
+    "Pages concernées": "Pagine interessate",
+    "Preuve observée": "Prova osservata",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Nessun segnale supera attualmente le soglie di rilevamento.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Seleziona un sito e attendi i primi eventi dello snippet.",
+    "Sessions avec page vue": "Sessioni con visualizzazione di pagina",
+    "Pages visitées": "Pagine visitate",
+    "Événements page_view observés": "Eventi page_view osservati",
+    "Soumissions de formulaire": "Invii di moduli",
+    "des sessions": "delle sessioni",
+    "Abandons de formulaire": "Abbandoni di moduli",
+    "Événements form_abandon observés": "Eventi form_abandon osservati",
+    "Comparaison avec la période précédente": "Confronto con il periodo precedente",
+    "Sessions avec formulaire envoyé": "Sessioni con modulo inviato",
+    "Valeurs précédentes · variation par rapport à la période courante": "Valori precedenti · variazione rispetto al periodo corrente",
+    "Comparaison limitée par le plafond de données.": "Confronto limitato dal tetto di dati.",
+    "Comparaison indisponible sans site sélectionné.": "Confronto non disponibile senza un sito selezionato.",
+    "Référents observés": "Referrer osservati",
+    "Aucun référent externe mesurable dans les événements reçus.": "Nessun referrer esterno misurabile negli eventi ricevuti.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "Le campagne UTM e la distinzione tra nuovi e ricorrenti non vengono raccolte.",
+    "Parcours mesuré — page vue vers formulaire": "Percorso misurato — visualizzazione di pagina verso modulo",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "Nessun percorso misurabile in questo periodo. Lo snippet deve raccogliere page_view e form_submit.",
+    "de perte mesurée à l’étape": "di perdita misurata allo step",
+    "Parcours les plus fréquents": "Percorsi più frequenti",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Le transizioni compariranno dopo la raccolta di più visualizzazioni di pagina in una sessione.",
+    "Pages d’entrée": "Pagine di ingresso",
+    "Pages de sortie": "Pagine di uscita",
+    "Frottements observés": "Attriti osservati",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "Nessun click di attrito né abbandono di modulo osservato nel periodo.",
+    "Non mesuré avec les événements actuels": "Non misurato con gli eventi attuali",
+    "Créer et analyser un funnel comportemental": "Crea e analizza un funnel comportamentale",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Inserisci da 2 a 6 eventi in ordine. Facoltativo: aggiungi :/percorso per limitare uno step a una pagina.",
+    "depuis l’étape précédente": "dallo step precedente",
+    "Période précédente": "Periodo precedente",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Risultato limitato agli eventi più recenti (tetto di sicurezza raggiunto).",
+    "Aucune donnée de page disponible": "Nessun dato di pagina disponibile",
+    "Appareil inconnu": "Dispositivo sconosciuto",
+    "sessions observées": "sessioni osservate",
+    "Un funnel doit contenir de 2 à 6 étapes.": "Un funnel deve contenere da 2 a 6 step.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Seleziona un sito prima di analizzare un funnel.",
+    "Insights IA générés à partir des événements observés": "Insight IA generati dagli eventi osservati",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Segnali misurati generati; raccomandazioni IA non disponibili",
+    "Erreur": "Errore",
+    "Données CRO indisponibles": "Dati CRO non disponibili",
+    "{count} observations CRO analysées": "{count} osservazioni CRO analizzate",
+    "Statut non enregistré": "Stato non salvato",
+    "Les événements comportementaux sont indisponibles.": "Gli eventi comportamentali non sono disponibili.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Gli eventi comportamentali sono temporaneamente non disponibili.",
+    "À traiter": "Da gestire",
+    "Appliquée": "Applicata",
+    "Écartée": "Scartata",
     },
     pt: {
+    "Cette intégration CRM n’est pas encore disponible.": "Esta integração de CRM ainda não está disponível.",
+    "La liste des CRM disponibles est momentanément indisponible.": "A lista de CRMs disponíveis está temporariamente indisponível.",
+    "Indisponible pour le moment": "Indisponível por enquanto",
+    "Données GA4 requises": "Dados do GA4 necessários",
+    "Données de revenu requises": "Dados de receita necessários",
+    "Conv. prévue": "Conv. prevista",
+    "Revenue prévu": "Receita prevista",
+    "30 jours · GA4": "30 dias · GA4",
+    "90 jours · GA4": "90 dias · GA4",
+    "Revenu": "Receita",
     "Sites critiques à corriger": "Sites críticos a corrigir",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Alguns sites têm uma pontuação SEO inferior a 50/100. Corrija primeiro as tags em falta e a velocidade móvel.",
     "À prioriser": "A priorizar",
@@ -33296,8 +33942,149 @@ function bindGlobalEvents() {
     "Priorité locale": "Prioridade local",
     "Désactivée": "Desativada",
     "Agressive": "Agressiva",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "URL do site obrigatório",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "Nenhum sinal comportamental utilizável nos últimos 30 dias. Estes eventos não medem a receita.",
+    "Attribution financière : données insuffisantes": "Atribuição financeira: dados insuficientes",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Os eventos comportamentais usam um identificador de sessão do tracker; a receita GA4 disponível é agregada e não permite uma junção exata. Nenhuma perda observada ou estimada será exibida sem esta prova.",
+    "Revenu observé par GA4": "Receita observada pelo GA4",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Conecte uma propriedade GA4 ativa com uma moeda reconhecida para exibir a receita observada. Nenhuma perda é estimada.",
+    "Aucune opportunité observée": "Nenhuma oportunidade observada",
+    "{count} opportunités observées": "{count} oportunidades observadas",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "Nenhuma perda em euros é calculada sem dados de receita ligados a estes eventos.",
+    "Opportunités de conversion — observations comportementales": "Oportunidades de conversão — observações comportamentais",
+    "{events} événements sur {sessions} sessions.": "{events} eventos em {sessions} sessões.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} eventos · {sessions} sessões · confiança {confidence} · fonte {source}",
+    "Revenu": "Receita",
+    "Corriger point de friction conversion": "Corrigir ponto de atrito de conversão",
+    "Corriger": "Corrigir",
+    "Analyse de page": "Análise da página",
+    "Signal confirmé": "Sinal confirmado",
+    "Signal récurrent": "Sinal recorrente",
+    "Signal à confirmer": "Sinal a confirmar",
+    "Preuve relevée sur la page": "Evidência encontrada na página",
+    "{events} événements · {sessions} sessions": "{events} eventos · {sessions} sessões",
+    "Analyse de la page": "Análise da página",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} títulos H1 · {forms} formulários · {ctas} chamadas para ação",
+    "Constats de page mesurés uniquement.": "Apenas constatações de página medidas são exibidas.",
+    "Preuve :": "Evidência:",
+    "Analyse de page indisponible": "Análise da página indisponível",
+    "Aucune recommandation n’est générée sans lecture de la page.": "Nenhuma recomendação é gerada sem a leitura da página.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Observações baseadas nos eventos realmente coletados. As estimativas financeiras e as previsões permanecem ocultas enquanto nenhuma conversão ou dado de receita estiver associado.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "As recomendações aparecerão após a coleta de sinais comportamentais reais. Nenhuma taxa ou ganho é inventado.",
+    "Examiner les observations": "Examinar as observações",
+    "Créer une mission": "Criar uma missão",
+    "Revoir les données": "Revisar os dados",
+    "Signaux observés": "Sinais observados",
+    "Sessions affectées": "Sessões afetadas",
+    "sessions distinctes par signal": "sessões distintas por sinal",
+    "Confiance élevée": "Confiança alta",
+    "au moins 30 sessions": "pelo menos 30 sessões",
+    "Gain financier": "Ganho financeiro",
+    "aucune conversion/revenu attribué": "nenhuma conversão ou receita atribuída",
+    "Analyse indisponible.": "Análise indisponível.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Nenhum ponto de atrito detectado pelas verificações automáticas nesta página.",
+    "Signaux comportementaux et actions CRO": "Sinais comportamentais e ações CRO",
+    "Analyser le site actif": "Analisar o site ativo",
+    "Mise en œuvre :": "Implementação:",
+    "Source :": "Fonte:",
+    "Optimiser la conversion": "Otimizar a conversão",
+    "Mission": "Missão",
+    "Statut de la recommandation": "Status da recomendação",
+    "🧪 Expériences A/B": "🧪 Experimentos A/B",
+    "Aucune expérience": "Nenhum experimento",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Crie um rascunho. O início permanece bloqueado até que o novo snippet confirme a coleta.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} exposições / {aConversions} conversões · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Resultado significativo · p={pValue} · vencedor {winner}",
+    "Non concluant · p={pValue}": "Inconclusivo · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Dados insuficientes — 30 exposições por variante necessárias",
+    "Brouillon": "Rascunho",
+    "Arrêté": "Parado",
+    "Démarrer": "Iniciar",
+    "📈 Prévision de conversion": "📈 Previsão de conversão",
+    "{count} clients": "{count} clientes",
+    "🎯 Objectif M+3 :": "🎯 Objetivo M+3:",
+    "clients/mois": "clientes/mês",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Reduzir a taxa de rejeição móvel de 32% para 22% = +8 clientes/mês estimados",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 pts/mês em média · Coerente com as ações CRO em curso",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Sem otimização do formulário, teto estimado em 0.38% (vs 0.41% visado)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Não medido; nenhuma receita é atribuída aos eventos observados",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "Nenhuma previsão exibida: são necessárias conversões observadas e um período de referência suficiente.",
+    "Fuite détectée": "Fuga detectada",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "Nenhuma perda financeira é exibida na pré-visualização sem dados de receita medidos.",
+    "{amount}€/mois": "{amount}€/mês",
+    "Aucun revenu attribué aux événements observés": "Nenhuma receita atribuída aos eventos observados",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Selecione um site cadastrado para isolar os dados do Behavioral AI.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Resultados calculados sobre uma amostra limitada de eventos recentes.",
+    "sessions avec page vue sur cette période": "sessões com visualização de página neste período",
+    "Aucune soumission de formulaire mesurable.": "Nenhum envio de formulário mensurável.",
+    "des sessions observées ont soumis un formulaire": "das sessões observadas enviaram um formulário",
+    "Taux d’abandon formulaire le plus élevé": "Taxa de abandono de formulário mais alta",
+    "Recommandations fondées sur les événements": "Recomendações baseadas em eventos",
+    "Chargement des données comportementales…": "Carregando os dados comportamentais…",
+    "Action": "Ação",
+    "Pages concernées": "Páginas envolvidas",
+    "Preuve observée": "Evidência observada",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Nenhum sinal ultrapassa atualmente os limiares de detecção.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Selecione um site e aguarde os primeiros eventos do snippet.",
+    "Sessions avec page vue": "Sessões com visualização de página",
+    "Pages visitées": "Páginas visitadas",
+    "Événements page_view observés": "Eventos page_view observados",
+    "Soumissions de formulaire": "Envios de formulário",
+    "des sessions": "das sessões",
+    "Abandons de formulaire": "Abandonos de formulário",
+    "Événements form_abandon observés": "Eventos form_abandon observados",
+    "Comparaison avec la période précédente": "Comparação com o período anterior",
+    "Sessions avec formulaire envoyé": "Sessões com formulário enviado",
+    "Valeurs précédentes · variation par rapport à la période courante": "Valores anteriores · variação em relação ao período atual",
+    "Comparaison limitée par le plafond de données.": "Comparação limitada pelo teto de dados.",
+    "Comparaison indisponible sans site sélectionné.": "Comparação indisponível sem um site selecionado.",
+    "Référents observés": "Referenciadores observados",
+    "Aucun référent externe mesurable dans les événements reçus.": "Nenhum referenciador externo mensurável nos eventos recebidos.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "As campanhas UTM e a distinção entre novos e recorrentes não são coletadas.",
+    "Parcours mesuré — page vue vers formulaire": "Percurso medido — visualização de página até ao formulário",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "Nenhum percurso mensurável neste período. O snippet deve coletar page_view e form_submit.",
+    "de perte mesurée à l’étape": "de perda medida na etapa",
+    "Parcours les plus fréquents": "Percursos mais frequentes",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "As transições aparecerão após a coleta de várias visualizações de página numa sessão.",
+    "Pages d’entrée": "Páginas de entrada",
+    "Pages de sortie": "Páginas de saída",
+    "Frottements observés": "Atritos observados",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "Nenhum clique de atrito nem abandono de formulário observado no período.",
+    "Non mesuré avec les événements actuels": "Não medido com os eventos atuais",
+    "Créer et analyser un funnel comportemental": "Criar e analisar um funil comportamental",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Insira de 2 a 6 eventos por ordem. Opcional: adicione :/caminho para limitar uma etapa a uma página.",
+    "depuis l’étape précédente": "desde a etapa anterior",
+    "Période précédente": "Período anterior",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Resultado limitado aos eventos mais recentes (teto de segurança atingido).",
+    "Aucune donnée de page disponible": "Nenhum dado de página disponível",
+    "Appareil inconnu": "Dispositivo desconhecido",
+    "sessions observées": "sessões observadas",
+    "Un funnel doit contenir de 2 à 6 étapes.": "Um funil deve conter de 2 a 6 etapas.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Selecione um site antes de analisar um funil.",
+    "Insights IA générés à partir des événements observés": "Insights de IA gerados a partir dos eventos observados",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Sinais medidos gerados; recomendações de IA indisponíveis",
+    "Erreur": "Erro",
+    "Données CRO indisponibles": "Dados CRO indisponíveis",
+    "{count} observations CRO analysées": "{count} observações CRO analisadas",
+    "Statut non enregistré": "Status não salvo",
+    "Les événements comportementaux sont indisponibles.": "Os eventos comportamentais estão indisponíveis.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Os eventos comportamentais estão temporariamente indisponíveis.",
+    "À traiter": "A tratar",
+    "Appliquée": "Aplicada",
+    "Écartée": "Descartada",
     },
     nl: {
+    "Cette intégration CRM n’est pas encore disponible.": "Deze CRM-integratie is nog niet beschikbaar.",
+    "La liste des CRM disponibles est momentanément indisponible.": "De lijst met beschikbare CRM’s is tijdelijk niet beschikbaar.",
+    "Indisponible pour le moment": "Momenteel niet beschikbaar",
+    "Données GA4 requises": "GA4-gegevens vereist",
+    "Données de revenu requises": "Omzetgegevens vereist",
+    "Conv. prévue": "Verwachte conv.",
+    "Revenue prévu": "Verwachte omzet",
+    "30 jours · GA4": "30 dagen · GA4",
+    "90 jours · GA4": "90 dagen · GA4",
+    "Revenu": "Omzet",
     "Sites critiques à corriger": "Kritieke sites om te herstellen",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Sommige sites hebben een SEO-score onder 50/100. Herstel eerst ontbrekende tags en mobiele snelheid.",
     "À prioriser": "Te prioriteren",
@@ -36230,8 +37017,149 @@ function bindGlobalEvents() {
     "Priorité locale": "Lokale prioriteit",
     "Désactivée": "Uitgeschakeld",
     "Agressive": "Agressief",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "Site-URL vereist",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "Geen bruikbare gedragssignalen in de afgelopen 30 dagen. Deze gebeurtenissen meten geen omzet.",
+    "Attribution financière : données insuffisantes": "Financiële toewijzing: onvoldoende gegevens",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Gedragsgebeurtenissen gebruiken een sessie-ID van de tracker; de beschikbare GA4-omzet is geaggregeerd en kan niet exact worden gekoppeld. Zonder dit bewijs wordt geen waargenomen of geschat verlies getoond.",
+    "Revenu observé par GA4": "Door GA4 waargenomen omzet",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Koppel een actieve GA4-property met een herkende valuta om de waargenomen omzet te tonen. Er wordt geen verlies geschat.",
+    "Aucune opportunité observée": "Geen kansen waargenomen",
+    "{count} opportunités observées": "{count} waargenomen kansen",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "Er wordt geen verlies in euro's berekend zonder omzetgegevens die aan deze gebeurtenissen zijn gekoppeld.",
+    "Opportunités de conversion — observations comportementales": "Conversiekansen — gedragswaarnemingen",
+    "{events} événements sur {sessions} sessions.": "{events} gebeurtenissen in {sessions} sessies.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} gebeurtenissen · {sessions} sessies · betrouwbaarheid {confidence} · bron {source}",
+    "Revenu": "Omzet",
+    "Corriger point de friction conversion": "Wrijvingspunt in conversie oplossen",
+    "Corriger": "Oplossen",
+    "Analyse de page": "Pagina-analyse",
+    "Signal confirmé": "Bevestigd signaal",
+    "Signal récurrent": "Terugkerend signaal",
+    "Signal à confirmer": "Te bevestigen signaal",
+    "Preuve relevée sur la page": "Op de pagina gevonden bewijs",
+    "{events} événements · {sessions} sessions": "{events} gebeurtenissen · {sessions} sessies",
+    "Analyse de la page": "Analyse van de pagina",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} H1-koppen · {forms} formulieren · {ctas} calls-to-action",
+    "Constats de page mesurés uniquement.": "Alleen gemeten paginabevindingen worden getoond.",
+    "Preuve :": "Bewijs:",
+    "Analyse de page indisponible": "Pagina-analyse niet beschikbaar",
+    "Aucune recommandation n’est générée sans lecture de la page.": "Zonder de pagina te kunnen lezen worden geen aanbevelingen gegenereerd.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Waarnemingen op basis van daadwerkelijk verzamelde gebeurtenissen. Financiële schattingen en prognoses blijven verborgen zolang er geen conversie of omzetgegevens zijn gekoppeld.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Aanbevelingen verschijnen nadat echte gedragssignalen zijn verzameld. Er wordt geen percentage of winst verzonnen.",
+    "Examiner les observations": "Waarnemingen bekijken",
+    "Créer une mission": "Een missie maken",
+    "Revoir les données": "Gegevens controleren",
+    "Signaux observés": "Waargenomen signalen",
+    "Sessions affectées": "Betrokken sessies",
+    "sessions distinctes par signal": "unieke sessies per signaal",
+    "Confiance élevée": "Hoge betrouwbaarheid",
+    "au moins 30 sessions": "minstens 30 sessies",
+    "Gain financier": "Financiële winst",
+    "aucune conversion/revenu attribué": "geen conversie of omzet toegewezen",
+    "Analyse indisponible.": "Analyse niet beschikbaar.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Geen wrijvingspunt gevonden door de automatische controles op deze pagina.",
+    "Signaux comportementaux et actions CRO": "Gedragssignalen en CRO-acties",
+    "Analyser le site actif": "Actieve site analyseren",
+    "Mise en œuvre :": "Uitvoering:",
+    "Source :": "Bron:",
+    "Optimiser la conversion": "Conversie optimaliseren",
+    "Mission": "Missie",
+    "Statut de la recommandation": "Status van de aanbeveling",
+    "🧪 Expériences A/B": "🧪 A/B-experimenten",
+    "Aucune expérience": "Geen experimenten",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Maak een concept. Starten blijft geblokkeerd totdat de nieuwe snippet de gegevensverzameling heeft bevestigd.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} weergaven / {aConversions} conversies · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Significant resultaat · p={pValue} · winnaar {winner}",
+    "Non concluant · p={pValue}": "Niet doorslaggevend · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Onvoldoende gegevens — 30 weergaven per variant vereist",
+    "Brouillon": "Concept",
+    "Arrêté": "Gestopt",
+    "Démarrer": "Starten",
+    "📈 Prévision de conversion": "📈 Conversieprognose",
+    "{count} clients": "{count} klanten",
+    "🎯 Objectif M+3 :": "🎯 Doel M+3:",
+    "clients/mois": "klanten/maand",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Mobiel bouncepercentage verlagen van 32% naar 22% = geschat +8 klanten/maand",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 pt/maand gemiddeld · In lijn met de lopende CRO-acties",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Zonder formulieroptimalisatie is het geschatte plafond 0.38% (t.o.v. 0.41% doel)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Niet gemeten; aan de waargenomen gebeurtenissen wordt geen omzet toegewezen",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "Geen prognose getoond: waargenomen conversies en een voldoende referentieperiode zijn nodig.",
+    "Fuite détectée": "Lek gedetecteerd",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "In het voorbeeld wordt zonder gemeten omzetgegevens geen financieel verlies getoond.",
+    "{amount}€/mois": "{amount} €/maand",
+    "Aucun revenu attribué aux événements observés": "Geen omzet toegewezen aan de waargenomen gebeurtenissen",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Selecteer een geregistreerde site om de Behavioral AI-gegevens te isoleren.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Resultaten berekend op een beperkte steekproef van recente gebeurtenissen.",
+    "sessions avec page vue sur cette période": "sessies met paginaweergave in deze periode",
+    "Aucune soumission de formulaire mesurable.": "Geen meetbare formulierverzending.",
+    "des sessions observées ont soumis un formulaire": "van de waargenomen sessies verzond een formulier",
+    "Taux d’abandon formulaire le plus élevé": "Hoogste formulierafbreekpercentage",
+    "Recommandations fondées sur les événements": "Aanbevelingen op basis van gebeurtenissen",
+    "Chargement des données comportementales…": "Gedragsgegevens laden…",
+    "Action": "Actie",
+    "Pages concernées": "Betrokken pagina's",
+    "Preuve observée": "Waargenomen bewijs",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Momenteel overschrijdt geen enkel signaal de detectiedrempels.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Selecteer een site en wacht op de eerste snippet-gebeurtenissen.",
+    "Sessions avec page vue": "Sessies met paginaweergave",
+    "Pages visitées": "Bezochte pagina's",
+    "Événements page_view observés": "Waargenomen page_view-gebeurtenissen",
+    "Soumissions de formulaire": "Formulierverzendingen",
+    "des sessions": "van de sessies",
+    "Abandons de formulaire": "Formulierafbrekingen",
+    "Événements form_abandon observés": "Waargenomen form_abandon-gebeurtenissen",
+    "Comparaison avec la période précédente": "Vergelijking met de vorige periode",
+    "Sessions avec formulaire envoyé": "Sessies met verzonden formulier",
+    "Valeurs précédentes · variation par rapport à la période courante": "Vorige waarden · verandering ten opzichte van de huidige periode",
+    "Comparaison limitée par le plafond de données.": "Vergelijking beperkt door het gegevensplafond.",
+    "Comparaison indisponible sans site sélectionné.": "Vergelijking niet beschikbaar zonder geselecteerde site.",
+    "Référents observés": "Waargenomen verwijzers",
+    "Aucun référent externe mesurable dans les événements reçus.": "Geen meetbare externe verwijzers in de ontvangen gebeurtenissen.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "UTM-campagnes en het onderscheid tussen nieuwe en terugkerende bezoekers worden niet verzameld.",
+    "Parcours mesuré — page vue vers formulaire": "Gemeten traject — paginaweergave naar formulier",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "Geen meetbaar traject in deze periode. De snippet moet page_view en form_submit verzamelen.",
+    "de perte mesurée à l’étape": "gemeten verlies bij stap",
+    "Parcours les plus fréquents": "Meest voorkomende trajecten",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Overgangen verschijnen nadat meerdere paginaweergaven in een sessie zijn verzameld.",
+    "Pages d’entrée": "Landingspagina's",
+    "Pages de sortie": "Uitstappagina's",
+    "Frottements observés": "Waargenomen wrijving",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "Geen wrijvingsklikken of formulierafbrekingen waargenomen in de periode.",
+    "Non mesuré avec les événements actuels": "Niet gemeten met de huidige gebeurtenissen",
+    "Créer et analyser un funnel comportemental": "Gedragsfunnel maken en analyseren",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Voer 2 tot 6 gebeurtenissen in volgorde in. Optioneel: voeg :/pad toe om een stap tot één pagina te beperken.",
+    "depuis l’étape précédente": "sinds de vorige stap",
+    "Période précédente": "Vorige periode",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Resultaat beperkt tot de meest recente gebeurtenissen (veiligheidsplafond bereikt).",
+    "Aucune donnée de page disponible": "Geen paginagegevens beschikbaar",
+    "Appareil inconnu": "Onbekend apparaat",
+    "sessions observées": "waargenomen sessies",
+    "Un funnel doit contenir de 2 à 6 étapes.": "Een funnel moet 2 tot 6 stappen bevatten.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Selecteer een site voordat u een funnel analyseert.",
+    "Insights IA générés à partir des événements observés": "AI-inzichten gegenereerd uit waargenomen gebeurtenissen",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Gemeten signalen gegenereerd; AI-aanbevelingen niet beschikbaar",
+    "Erreur": "Fout",
+    "Données CRO indisponibles": "CRO-gegevens niet beschikbaar",
+    "{count} observations CRO analysées": "{count} CRO-waarnemingen geanalyseerd",
+    "Statut non enregistré": "Status niet opgeslagen",
+    "Les événements comportementaux sont indisponibles.": "De gedragsgebeurtenissen zijn niet beschikbaar.",
+    "Les événements comportementaux sont temporairement indisponibles.": "De gedragsgebeurtenissen zijn tijdelijk niet beschikbaar.",
+    "À traiter": "Te doen",
+    "Appliquée": "Toegepast",
+    "Écartée": "Afgewezen",
     },
     pl: {
+    "Cette intégration CRM n’est pas encore disponible.": "Ta integracja CRM nie jest jeszcze dostępna.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Lista dostępnych systemów CRM jest tymczasowo niedostępna.",
+    "Indisponible pour le moment": "Chwilowo niedostępne",
+    "Données GA4 requises": "Wymagane dane GA4",
+    "Données de revenu requises": "Wymagane dane o przychodach",
+    "Conv. prévue": "Prognoz. konw.",
+    "Revenue prévu": "Prognoz. przychód",
+    "30 jours · GA4": "30 dni · GA4",
+    "90 jours · GA4": "90 dni · GA4",
+    "Revenu": "Przychód",
     "Sites critiques à corriger": "Krytyczne witryny do naprawy",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Niektóre witryny mają wynik SEO poniżej 50/100. Najpierw popraw brakujące tagi i szybkość mobilną.",
     "À prioriser": "Do priorytetyzacji",
@@ -39164,8 +40092,149 @@ function bindGlobalEvents() {
     "Priorité locale": "Priorytet lokalny",
     "Désactivée": "Wyłączona",
     "Agressive": "Agresywny",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "Wymagany adres URL witryny",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "Brak użytecznych sygnałów behawioralnych w ciągu ostatnich 30 dni. Te zdarzenia nie mierzą przychodów.",
+    "Attribution financière : données insuffisantes": "Atrybucja finansowa: niewystarczające dane",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Zdarzenia behawioralne używają identyfikatora sesji trackera; dostępne przychody GA4 są zagregowane i nie pozwalają na dokładne powiązanie. Bez tego dowodu nie zostanie wyświetlona żadna zaobserwowana ani szacowana strata.",
+    "Revenu observé par GA4": "Przychód zaobserwowany przez GA4",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Połącz aktywną usługę GA4 z rozpoznaną walutą, aby wyświetlić zaobserwowany przychód. Żadna strata nie jest szacowana.",
+    "Aucune opportunité observée": "Nie zaobserwowano okazji",
+    "{count} opportunités observées": "Zaobserwowane okazje: {count}",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "Żadna strata w euro nie jest obliczana bez danych o przychodach powiązanych z tymi zdarzeniami.",
+    "Opportunités de conversion — observations comportementales": "Okazje konwersji — obserwacje behawioralne",
+    "{events} événements sur {sessions} sessions.": "{events} zdarzeń w {sessions} sesjach.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} zdarzeń · {sessions} sesji · pewność {confidence} · źródło {source}",
+    "Revenu": "Przychód",
+    "Corriger point de friction conversion": "Usuń punkt tarcia w konwersji",
+    "Corriger": "Napraw",
+    "Analyse de page": "Analiza strony",
+    "Signal confirmé": "Potwierdzony sygnał",
+    "Signal récurrent": "Powtarzający się sygnał",
+    "Signal à confirmer": "Sygnał do potwierdzenia",
+    "Preuve relevée sur la page": "Dowód znaleziony na stronie",
+    "{events} événements · {sessions} sessions": "{events} zdarzeń · {sessions} sesji",
+    "Analyse de la page": "Analiza strony",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} nagłówków H1 · {forms} formularzy · {ctas} wezwań do działania",
+    "Constats de page mesurés uniquement.": "Wyświetlane są wyłącznie zmierzone ustalenia dotyczące strony.",
+    "Preuve :": "Dowód:",
+    "Analyse de page indisponible": "Analiza strony niedostępna",
+    "Aucune recommandation n’est générée sans lecture de la page.": "Bez odczytania strony nie są generowane żadne rekomendacje.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Obserwacje oparte na faktycznie zebranych zdarzeniach. Szacunki finansowe i prognozy pozostają ukryte, dopóki nie zostaną powiązane konwersje ani dane o przychodach.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Rekomendacje pojawią się po zebraniu rzeczywistych sygnałów behawioralnych. Żaden wskaźnik ani zysk nie jest zmyślony.",
+    "Examiner les observations": "Przejrzyj obserwacje",
+    "Créer une mission": "Utwórz zadanie",
+    "Revoir les données": "Przejrzyj dane",
+    "Signaux observés": "Zaobserwowane sygnały",
+    "Sessions affectées": "Dotknięte sesje",
+    "sessions distinctes par signal": "unikalne sesje na sygnał",
+    "Confiance élevée": "Wysoka pewność",
+    "au moins 30 sessions": "co najmniej 30 sesji",
+    "Gain financier": "Zysk finansowy",
+    "aucune conversion/revenu attribué": "brak przypisanej konwersji lub przychodu",
+    "Analyse indisponible.": "Analiza niedostępna.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Automatyczne kontrole nie wykryły na tej stronie żadnego punktu tarcia.",
+    "Signaux comportementaux et actions CRO": "Sygnały behawioralne i działania CRO",
+    "Analyser le site actif": "Analizuj aktywną witrynę",
+    "Mise en œuvre :": "Wdrożenie:",
+    "Source :": "Źródło:",
+    "Optimiser la conversion": "Zoptymalizuj konwersję",
+    "Mission": "Zadanie",
+    "Statut de la recommandation": "Status rekomendacji",
+    "🧪 Expériences A/B": "🧪 Eksperymenty A/B",
+    "Aucune expérience": "Brak eksperymentów",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Utwórz wersję roboczą. Start pozostaje zablokowany, dopóki nowy snippet nie potwierdzi zbierania danych.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} ekspozycji / {aConversions} konwersji · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Wynik istotny · p={pValue} · zwycięzca {winner}",
+    "Non concluant · p={pValue}": "Wynik niejednoznaczny · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Niewystarczające dane — wymagane 30 ekspozycji na wariant",
+    "Brouillon": "Wersja robocza",
+    "Arrêté": "Zatrzymany",
+    "Démarrer": "Uruchom",
+    "📈 Prévision de conversion": "📈 Prognoza konwersji",
+    "{count} clients": "{count} klientów",
+    "🎯 Objectif M+3 :": "🎯 Cel M+3:",
+    "clients/mois": "klientów/miesiąc",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Obniżenie współczynnika odrzuceń na urządzeniach mobilnych z 32% do 22% = szacunkowo +8 klientów/miesiąc",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 pkt/miesiąc średnio · Spójne z trwającymi działaniami CRO",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Bez optymalizacji formularza szacowany pułap to 0.38% (wobec docelowych 0.41%)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Niezmierzone; żaden przychód nie jest przypisany do zaobserwowanych zdarzeń",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "Brak prognozy: potrzebne są zaobserwowane konwersje i wystarczający okres odniesienia.",
+    "Fuite détectée": "Wykryto wyciek",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "W podglądzie nie jest wyświetlana żadna strata finansowa bez zmierzonych danych o przychodach.",
+    "{amount}€/mois": "{amount} €/mies.",
+    "Aucun revenu attribué aux événements observés": "Żaden przychód nie jest przypisany do zaobserwowanych zdarzeń",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Wybierz zarejestrowaną witrynę, aby wyodrębnić dane Behavioral AI.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Wyniki obliczone na ograniczonej próbce ostatnich zdarzeń.",
+    "sessions avec page vue sur cette période": "sesji z odsłoną strony w tym okresie",
+    "Aucune soumission de formulaire mesurable.": "Brak mierzalnego wysłania formularza.",
+    "des sessions observées ont soumis un formulaire": "obserwowanych sesji wysłało formularz",
+    "Taux d’abandon formulaire le plus élevé": "Najwyższy wskaźnik porzucenia formularza",
+    "Recommandations fondées sur les événements": "Rekomendacje oparte na zdarzeniach",
+    "Chargement des données comportementales…": "Ładowanie danych behawioralnych…",
+    "Action": "Działanie",
+    "Pages concernées": "Dotknięte strony",
+    "Preuve observée": "Zaobserwowany dowód",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Obecnie żaden sygnał nie przekracza progów wykrywania.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Wybierz witrynę i poczekaj na pierwsze zdarzenia snippetu.",
+    "Sessions avec page vue": "Sesje z odsłoną strony",
+    "Pages visitées": "Odwiedzone strony",
+    "Événements page_view observés": "Zaobserwowane zdarzenia page_view",
+    "Soumissions de formulaire": "Wysłane formularze",
+    "des sessions": "sesji",
+    "Abandons de formulaire": "Porzucone formularze",
+    "Événements form_abandon observés": "Zaobserwowane zdarzenia form_abandon",
+    "Comparaison avec la période précédente": "Porównanie z poprzednim okresem",
+    "Sessions avec formulaire envoyé": "Sesje z wysłanym formularzem",
+    "Valeurs précédentes · variation par rapport à la période courante": "Poprzednie wartości · zmiana względem bieżącego okresu",
+    "Comparaison limitée par le plafond de données.": "Porównanie ograniczone limitem danych.",
+    "Comparaison indisponible sans site sélectionné.": "Porównanie niedostępne bez wybranej witryny.",
+    "Référents observés": "Zaobserwowane źródła odesłań",
+    "Aucun référent externe mesurable dans les événements reçus.": "Brak mierzalnych zewnętrznych źródeł odesłań w otrzymanych zdarzeniach.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "Kampanie UTM oraz rozróżnienie nowych i powracających użytkowników nie są zbierane.",
+    "Parcours mesuré — page vue vers formulaire": "Zmierzona ścieżka — odsłona strony do formularza",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "Brak mierzalnej ścieżki w tym okresie. Snippet musi zbierać page_view i form_submit.",
+    "de perte mesurée à l’étape": "zmierzonej utraty na etapie",
+    "Parcours les plus fréquents": "Najczęstsze ścieżki",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Przejścia pojawią się po zebraniu kilku odsłon stron w sesji.",
+    "Pages d’entrée": "Strony wejścia",
+    "Pages de sortie": "Strony wyjścia",
+    "Frottements observés": "Zaobserwowane tarcia",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "W tym okresie nie zaobserwowano kliknięć frustracji ani porzuceń formularzy.",
+    "Non mesuré avec les événements actuels": "Niezmierzone na podstawie bieżących zdarzeń",
+    "Créer et analyser un funnel comportemental": "Utwórz i przeanalizuj lejek behawioralny",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Wpisz od 2 do 6 zdarzeń po kolei. Opcjonalnie: dodaj :/ścieżka, aby ograniczyć etap do jednej strony.",
+    "depuis l’étape précédente": "od poprzedniego etapu",
+    "Période précédente": "Poprzedni okres",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Wynik ograniczony do najnowszych zdarzeń (osiągnięto limit bezpieczeństwa).",
+    "Aucune donnée de page disponible": "Brak dostępnych danych o stronach",
+    "Appareil inconnu": "Nieznane urządzenie",
+    "sessions observées": "obserwowanych sesji",
+    "Un funnel doit contenir de 2 à 6 étapes.": "Lejek musi zawierać od 2 do 6 etapów.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Wybierz witrynę przed analizą lejka.",
+    "Insights IA générés à partir des événements observés": "Wnioski AI wygenerowane na podstawie zaobserwowanych zdarzeń",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Wygenerowano zmierzone sygnały; rekomendacje AI niedostępne",
+    "Erreur": "Błąd",
+    "Données CRO indisponibles": "Dane CRO niedostępne",
+    "{count} observations CRO analysées": "Przeanalizowane obserwacje CRO: {count}",
+    "Statut non enregistré": "Status nie został zapisany",
+    "Les événements comportementaux sont indisponibles.": "Zdarzenia behawioralne są niedostępne.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Zdarzenia behawioralne są tymczasowo niedostępne.",
+    "À traiter": "Do zrobienia",
+    "Appliquée": "Zastosowana",
+    "Écartée": "Odrzucona",
     },
     sv: {
+    "Cette intégration CRM n’est pas encore disponible.": "Den här CRM-integrationen är inte tillgänglig ännu.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Listan över tillgängliga CRM är tillfälligt otillgänglig.",
+    "Indisponible pour le moment": "Inte tillgänglig just nu",
+    "Données GA4 requises": "GA4-data krävs",
+    "Données de revenu requises": "Intäktsdata krävs",
+    "Conv. prévue": "Prognos. konv.",
+    "Revenue prévu": "Prognos. intäkter",
+    "30 jours · GA4": "30 dagar · GA4",
+    "90 jours · GA4": "90 dagar · GA4",
+    "Revenu": "Intäkter",
     "Sites critiques à corriger": "Kritiska webbplatser att åtgärda",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Vissa webbplatser har ett SEO-betyg under 50/100. Åtgärda saknade taggar och mobil hastighet först.",
     "À prioriser": "Att prioritera",
@@ -42098,8 +43167,149 @@ function bindGlobalEvents() {
     "Priorité locale": "Lokal prioritet",
     "Désactivée": "Inaktiverad",
     "Agressive": "Aggressiv",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "Webbplatsens URL krävs",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "Inga användbara beteendesignaler de senaste 30 dagarna. Dessa händelser mäter inte intäkter.",
+    "Attribution financière : données insuffisantes": "Finansiell attribuering: otillräckliga data",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Beteendehändelser använder ett sessions-ID från trackern; tillgängliga GA4-intäkter är aggregerade och kan inte kopplas exakt. Ingen observerad eller uppskattad förlust visas utan detta bevis.",
+    "Revenu observé par GA4": "Intäkter observerade av GA4",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Anslut en aktiv GA4-egendom med en igenkänd valuta för att visa observerade intäkter. Ingen förlust uppskattas.",
+    "Aucune opportunité observée": "Inga möjligheter observerade",
+    "{count} opportunités observées": "{count} observerade möjligheter",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "Ingen förlust i euro beräknas utan intäktsdata kopplade till dessa händelser.",
+    "Opportunités de conversion — observations comportementales": "Konverteringsmöjligheter — beteendeobservationer",
+    "{events} événements sur {sessions} sessions.": "{events} händelser i {sessions} sessioner.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} händelser · {sessions} sessioner · tillförlitlighet {confidence} · källa {source}",
+    "Revenu": "Intäkter",
+    "Corriger point de friction conversion": "Åtgärda friktionspunkt i konvertering",
+    "Corriger": "Åtgärda",
+    "Analyse de page": "Sidanalys",
+    "Signal confirmé": "Bekräftad signal",
+    "Signal récurrent": "Återkommande signal",
+    "Signal à confirmer": "Signal att bekräfta",
+    "Preuve relevée sur la page": "Bevis funnet på sidan",
+    "{events} événements · {sessions} sessions": "{events} händelser · {sessions} sessioner",
+    "Analyse de la page": "Analys av sidan",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} H1-rubriker · {forms} formulär · {ctas} uppmaningar till handling",
+    "Constats de page mesurés uniquement.": "Endast uppmätta sidfynd visas.",
+    "Preuve :": "Bevis:",
+    "Analyse de page indisponible": "Sidanalys otillgänglig",
+    "Aucune recommandation n’est générée sans lecture de la page.": "Inga rekommendationer genereras utan att sidan kan läsas.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Observationer baserade på faktiskt insamlade händelser. Finansiella uppskattningar och prognoser förblir dolda tills ingen konvertering eller intäktsdata är kopplad.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Rekommendationer visas efter att verkliga beteendesignaler har samlats in. Ingen andel eller vinst hittas på.",
+    "Examiner les observations": "Granska observationerna",
+    "Créer une mission": "Skapa ett uppdrag",
+    "Revoir les données": "Granska data",
+    "Signaux observés": "Observerade signaler",
+    "Sessions affectées": "Berörda sessioner",
+    "sessions distinctes par signal": "unika sessioner per signal",
+    "Confiance élevée": "Hög tillförlitlighet",
+    "au moins 30 sessions": "minst 30 sessioner",
+    "Gain financier": "Finansiell vinst",
+    "aucune conversion/revenu attribué": "ingen konvertering eller intäkt tillskriven",
+    "Analyse indisponible.": "Analys otillgänglig.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Inga friktionspunkter upptäcktes av de automatiska kontrollerna på den här sidan.",
+    "Signaux comportementaux et actions CRO": "Beteendesignaler och CRO-åtgärder",
+    "Analyser le site actif": "Analysera den aktiva webbplatsen",
+    "Mise en œuvre :": "Genomförande:",
+    "Source :": "Källa:",
+    "Optimiser la conversion": "Optimera konverteringen",
+    "Mission": "Uppdrag",
+    "Statut de la recommandation": "Rekommendationens status",
+    "🧪 Expériences A/B": "🧪 A/B-experiment",
+    "Aucune expérience": "Inga experiment",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Skapa ett utkast. Starten förblir spärrad tills det nya snippetet har bekräftat insamlingen.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} visningar / {aConversions} konverteringar · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Signifikant resultat · p={pValue} · vinnare {winner}",
+    "Non concluant · p={pValue}": "Inte avgörande · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Otillräckliga data — 30 visningar per variant krävs",
+    "Brouillon": "Utkast",
+    "Arrêté": "Stoppad",
+    "Démarrer": "Starta",
+    "📈 Prévision de conversion": "📈 Konverteringsprognos",
+    "{count} clients": "{count} kunder",
+    "🎯 Objectif M+3 :": "🎯 Mål M+3:",
+    "clients/mois": "kunder/månad",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Sänk studsfrekvensen på mobil från 32 % till 22 % = uppskattat +8 kunder/månad",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 procentenheter/månad i snitt · I linje med pågående CRO-åtgärder",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Utan formuläroptimering är det uppskattade taket 0.38 % (mot 0.41 % mål)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Ej uppmätt; ingen intäkt tillskrivs de observerade händelserna",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "Ingen prognos visas: observerade konverteringar och en tillräcklig referensperiod krävs.",
+    "Fuite détectée": "Läcka upptäckt",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "Ingen finansiell förlust visas i förhandsvisningen utan uppmätta intäktsdata.",
+    "{amount}€/mois": "{amount} €/månad",
+    "Aucun revenu attribué aux événements observés": "Ingen intäkt tillskriven de observerade händelserna",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Välj en registrerad webbplats för att isolera Behavioral AI-data.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Resultat beräknade på ett begränsat urval av senaste händelser.",
+    "sessions avec page vue sur cette période": "sessioner med sidvisning under perioden",
+    "Aucune soumission de formulaire mesurable.": "Ingen mätbar formulärinskickning.",
+    "des sessions observées ont soumis un formulaire": "av de observerade sessionerna skickade ett formulär",
+    "Taux d’abandon formulaire le plus élevé": "Högsta andel avbrutna formulär",
+    "Recommandations fondées sur les événements": "Rekommendationer baserade på händelser",
+    "Chargement des données comportementales…": "Laddar beteendedata…",
+    "Action": "Åtgärd",
+    "Pages concernées": "Berörda sidor",
+    "Preuve observée": "Observerat bevis",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Ingen signal överskrider för närvarande detekteringsgränserna.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Välj en webbplats och vänta på de första snippet-händelserna.",
+    "Sessions avec page vue": "Sessioner med sidvisning",
+    "Pages visitées": "Besökta sidor",
+    "Événements page_view observés": "Observerade page_view-händelser",
+    "Soumissions de formulaire": "Formulärinskickningar",
+    "des sessions": "av sessionerna",
+    "Abandons de formulaire": "Avbrutna formulär",
+    "Événements form_abandon observés": "Observerade form_abandon-händelser",
+    "Comparaison avec la période précédente": "Jämförelse med föregående period",
+    "Sessions avec formulaire envoyé": "Sessioner med skickat formulär",
+    "Valeurs précédentes · variation par rapport à la période courante": "Tidigare värden · förändring jämfört med aktuell period",
+    "Comparaison limitée par le plafond de données.": "Jämförelsen begränsas av datataket.",
+    "Comparaison indisponible sans site sélectionné.": "Jämförelse otillgänglig utan vald webbplats.",
+    "Référents observés": "Observerade hänvisare",
+    "Aucun référent externe mesurable dans les événements reçus.": "Inga mätbara externa hänvisare i de mottagna händelserna.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "UTM-kampanjer och uppdelningen mellan nya och återkommande besökare samlas inte in.",
+    "Parcours mesuré — page vue vers formulaire": "Uppmätt flöde — sidvisning till formulär",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "Inget mätbart flöde under perioden. Snippetet måste samla in page_view och form_submit.",
+    "de perte mesurée à l’étape": "uppmätt förlust vid steget",
+    "Parcours les plus fréquents": "Vanligaste flödena",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Övergångar visas efter att flera sidvisningar har samlats in i en session.",
+    "Pages d’entrée": "Ingångssidor",
+    "Pages de sortie": "Utgångssidor",
+    "Frottements observés": "Observerad friktion",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "Inga friktionsklick eller avbrutna formulär observerades under perioden.",
+    "Non mesuré avec les événements actuels": "Ej uppmätt med nuvarande händelser",
+    "Créer et analyser un funnel comportemental": "Skapa och analysera en beteendetratt",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Ange 2 till 6 händelser i ordning. Valfritt: lägg till :/sökväg för att begränsa ett steg till en sida.",
+    "depuis l’étape précédente": "sedan föregående steg",
+    "Période précédente": "Föregående period",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Resultatet begränsat till de senaste händelserna (säkerhetstak nått).",
+    "Aucune donnée de page disponible": "Inga sidodata tillgängliga",
+    "Appareil inconnu": "Okänd enhet",
+    "sessions observées": "observerade sessioner",
+    "Un funnel doit contenir de 2 à 6 étapes.": "En tratt måste innehålla 2 till 6 steg.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Välj en webbplats innan du analyserar en tratt.",
+    "Insights IA générés à partir des événements observés": "AI-insikter genererade från observerade händelser",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Uppmätta signaler genererade; AI-rekommendationer otillgängliga",
+    "Erreur": "Fel",
+    "Données CRO indisponibles": "CRO-data otillgängliga",
+    "{count} observations CRO analysées": "{count} CRO-observationer analyserade",
+    "Statut non enregistré": "Status sparades inte",
+    "Les événements comportementaux sont indisponibles.": "Beteendehändelserna är otillgängliga.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Beteendehändelserna är tillfälligt otillgängliga.",
+    "À traiter": "Att göra",
+    "Appliquée": "Tillämpad",
+    "Écartée": "Avfärdad",
     },
     ro: {
+    "Cette intégration CRM n’est pas encore disponible.": "Această integrare CRM nu este încă disponibilă.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Lista CRM-urilor disponibile este temporar indisponibilă.",
+    "Indisponible pour le moment": "Indisponibil momentan",
+    "Données GA4 requises": "Sunt necesare date GA4",
+    "Données de revenu requises": "Sunt necesare date privind veniturile",
+    "Conv. prévue": "Conv. estimată",
+    "Revenue prévu": "Venit estimat",
+    "30 jours · GA4": "30 de zile · GA4",
+    "90 jours · GA4": "90 de zile · GA4",
+    "Revenu": "Venit",
     "Sites critiques à corriger": "Site-uri critice de corectat",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Unele site-uri au un scor SEO sub 50/100. Corectați mai întâi etichetele lipsă și viteza pe mobil.",
     "À prioriser": "De prioritizat",
@@ -45032,8 +46242,149 @@ function bindGlobalEvents() {
     "Priorité locale": "Prioritate locală",
     "Désactivée": "Dezactivată",
     "Agressive": "Agresiv",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "URL-ul site-ului este obligatoriu",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "Niciun semnal comportamental utilizabil în ultimele 30 de zile. Aceste evenimente nu măsoară veniturile.",
+    "Attribution financière : données insuffisantes": "Atribuire financiară: date insuficiente",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Evenimentele comportamentale folosesc un identificator de sesiune al tracker-ului; veniturile GA4 disponibile sunt agregate și nu permit o asociere exactă. Nicio pierdere observată sau estimată nu va fi afișată fără această dovadă.",
+    "Revenu observé par GA4": "Venituri observate de GA4",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Conectați o proprietate GA4 activă cu o monedă recunoscută pentru a afișa veniturile observate. Nicio pierdere nu este estimată.",
+    "Aucune opportunité observée": "Nicio oportunitate observată",
+    "{count} opportunités observées": "{count} oportunități observate",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "Nicio pierdere în euro nu este calculată fără date de venit asociate acestor evenimente.",
+    "Opportunités de conversion — observations comportementales": "Oportunități de conversie — observații comportamentale",
+    "{events} événements sur {sessions} sessions.": "{events} evenimente în {sessions} sesiuni.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} evenimente · {sessions} sesiuni · încredere {confidence} · sursă {source}",
+    "Revenu": "Venituri",
+    "Corriger point de friction conversion": "Remediați punctul de fricțiune al conversiei",
+    "Corriger": "Remediază",
+    "Analyse de page": "Analiza paginii",
+    "Signal confirmé": "Semnal confirmat",
+    "Signal récurrent": "Semnal recurent",
+    "Signal à confirmer": "Semnal de confirmat",
+    "Preuve relevée sur la page": "Dovadă găsită pe pagină",
+    "{events} événements · {sessions} sessions": "{events} evenimente · {sessions} sesiuni",
+    "Analyse de la page": "Analiza paginii",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} titluri H1 · {forms} formulare · {ctas} apeluri la acțiune",
+    "Constats de page mesurés uniquement.": "Sunt afișate doar constatările de pagină măsurate.",
+    "Preuve :": "Dovadă:",
+    "Analyse de page indisponible": "Analiza paginii indisponibilă",
+    "Aucune recommandation n’est générée sans lecture de la page.": "Nicio recomandare nu este generată fără citirea paginii.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Observații bazate pe evenimentele colectate efectiv. Estimările financiare și previziunile rămân ascunse atât timp cât nu sunt asociate conversii sau date de venit.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Recomandările vor apărea după colectarea unor semnale comportamentale reale. Nicio rată sau câștig nu este inventat.",
+    "Examiner les observations": "Examinați observațiile",
+    "Créer une mission": "Creați o misiune",
+    "Revoir les données": "Revizuiți datele",
+    "Signaux observés": "Semnale observate",
+    "Sessions affectées": "Sesiuni afectate",
+    "sessions distinctes par signal": "sesiuni distincte per semnal",
+    "Confiance élevée": "Încredere ridicată",
+    "au moins 30 sessions": "cel puțin 30 de sesiuni",
+    "Gain financier": "Câștig financiar",
+    "aucune conversion/revenu attribué": "nicio conversie sau venit atribuit",
+    "Analyse indisponible.": "Analiză indisponibilă.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Niciun punct de fricțiune detectat de verificările automate pe această pagină.",
+    "Signaux comportementaux et actions CRO": "Semnale comportamentale și acțiuni CRO",
+    "Analyser le site actif": "Analizați site-ul activ",
+    "Mise en œuvre :": "Implementare:",
+    "Source :": "Sursă:",
+    "Optimiser la conversion": "Optimizați conversia",
+    "Mission": "Misiune",
+    "Statut de la recommandation": "Starea recomandării",
+    "🧪 Expériences A/B": "🧪 Experimente A/B",
+    "Aucune expérience": "Niciun experiment",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Creați o ciornă. Pornirea rămâne blocată până când noul snippet confirmă colectarea.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} expuneri / {aConversions} conversii · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Rezultat semnificativ · p={pValue} · câștigător {winner}",
+    "Non concluant · p={pValue}": "Neconcludent · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Date insuficiente — sunt necesare 30 de expuneri per variantă",
+    "Brouillon": "Ciornă",
+    "Arrêté": "Oprit",
+    "Démarrer": "Pornește",
+    "📈 Prévision de conversion": "📈 Previziune de conversie",
+    "{count} clients": "{count} clienți",
+    "🎯 Objectif M+3 :": "🎯 Obiectiv M+3:",
+    "clients/mois": "clienți/lună",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Reducerea ratei de respingere pe mobil de la 32% la 22% = +8 clienți/lună estimați",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "+0.06 puncte/lună în medie · Coerent cu acțiunile CRO în curs",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Fără optimizarea formularului, plafonul estimat este de 0.38% (față de 0.41% vizat)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Nemăsurat; niciun venit nu este atribuit evenimentelor observate",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "Nicio previziune afișată: sunt necesare conversii observate și o perioadă de referință suficientă.",
+    "Fuite détectée": "Scurgere detectată",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "Nicio pierdere financiară nu este afișată în previzualizare fără date de venit măsurate.",
+    "{amount}€/mois": "{amount} €/lună",
+    "Aucun revenu attribué aux événements observés": "Niciun venit atribuit evenimentelor observate",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Selectați un site înregistrat pentru a izola datele Behavioral AI.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Rezultate calculate pe un eșantion limitat de evenimente recente.",
+    "sessions avec page vue sur cette période": "sesiuni cu vizualizare de pagină în această perioadă",
+    "Aucune soumission de formulaire mesurable.": "Nicio trimitere de formular măsurabilă.",
+    "des sessions observées ont soumis un formulaire": "din sesiunile observate au trimis un formular",
+    "Taux d’abandon formulaire le plus élevé": "Cea mai mare rată de abandon a formularului",
+    "Recommandations fondées sur les événements": "Recomandări bazate pe evenimente",
+    "Chargement des données comportementales…": "Se încarcă datele comportamentale…",
+    "Action": "Acțiune",
+    "Pages concernées": "Pagini afectate",
+    "Preuve observée": "Dovadă observată",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Niciun semnal nu depășește în prezent pragurile de detecție.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Selectați un site și așteptați primele evenimente ale snippet-ului.",
+    "Sessions avec page vue": "Sesiuni cu vizualizare de pagină",
+    "Pages visitées": "Pagini vizitate",
+    "Événements page_view observés": "Evenimente page_view observate",
+    "Soumissions de formulaire": "Trimiteri de formulare",
+    "des sessions": "din sesiuni",
+    "Abandons de formulaire": "Abandonuri de formulare",
+    "Événements form_abandon observés": "Evenimente form_abandon observate",
+    "Comparaison avec la période précédente": "Comparație cu perioada anterioară",
+    "Sessions avec formulaire envoyé": "Sesiuni cu formular trimis",
+    "Valeurs précédentes · variation par rapport à la période courante": "Valori anterioare · variație față de perioada curentă",
+    "Comparaison limitée par le plafond de données.": "Comparație limitată de plafonul de date.",
+    "Comparaison indisponible sans site sélectionné.": "Comparație indisponibilă fără un site selectat.",
+    "Référents observés": "Referreri observați",
+    "Aucun référent externe mesurable dans les événements reçus.": "Niciun referrer extern măsurabil în evenimentele primite.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "Campaniile UTM și distincția dintre vizitatori noi și recurenți nu sunt colectate.",
+    "Parcours mesuré — page vue vers formulaire": "Parcurs măsurat — vizualizare de pagină spre formular",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "Niciun parcurs măsurabil în această perioadă. Snippet-ul trebuie să colecteze page_view și form_submit.",
+    "de perte mesurée à l’étape": "pierdere măsurată la etapa",
+    "Parcours les plus fréquents": "Cele mai frecvente parcursuri",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Tranzițiile vor apărea după colectarea mai multor vizualizări de pagină într-o sesiune.",
+    "Pages d’entrée": "Pagini de intrare",
+    "Pages de sortie": "Pagini de ieșire",
+    "Frottements observés": "Fricțiuni observate",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "Niciun clic de fricțiune și niciun abandon de formular observat în perioadă.",
+    "Non mesuré avec les événements actuels": "Nemăsurat cu evenimentele actuale",
+    "Créer et analyser un funnel comportemental": "Creați și analizați un funnel comportamental",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Introduceți 2 până la 6 evenimente în ordine. Opțional: adăugați :/cale pentru a limita o etapă la o pagină.",
+    "depuis l’étape précédente": "față de etapa anterioară",
+    "Période précédente": "Perioada anterioară",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Rezultat limitat la cele mai recente evenimente (plafon de siguranță atins).",
+    "Aucune donnée de page disponible": "Nicio dată de pagină disponibilă",
+    "Appareil inconnu": "Dispozitiv necunoscut",
+    "sessions observées": "sesiuni observate",
+    "Un funnel doit contenir de 2 à 6 étapes.": "Un funnel trebuie să conțină între 2 și 6 etape.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Selectați un site înainte de a analiza un funnel.",
+    "Insights IA générés à partir des événements observés": "Insight-uri IA generate din evenimentele observate",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Semnale măsurate generate; recomandări IA indisponibile",
+    "Erreur": "Eroare",
+    "Données CRO indisponibles": "Date CRO indisponibile",
+    "{count} observations CRO analysées": "{count} observații CRO analizate",
+    "Statut non enregistré": "Starea nu a fost salvată",
+    "Les événements comportementaux sont indisponibles.": "Evenimentele comportamentale sunt indisponibile.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Evenimentele comportamentale sunt temporar indisponibile.",
+    "À traiter": "De tratat",
+    "Appliquée": "Aplicată",
+    "Écartée": "Respinsă",
     },
     cs: {
+    "Cette intégration CRM n’est pas encore disponible.": "Tato integrace CRM zatím není k dispozici.",
+    "La liste des CRM disponibles est momentanément indisponible.": "Seznam dostupných CRM je dočasně nedostupný.",
+    "Indisponible pour le moment": "Momentálně nedostupné",
+    "Données GA4 requises": "Jsou vyžadována data GA4",
+    "Données de revenu requises": "Jsou vyžadována data o příjmech",
+    "Conv. prévue": "Předp. konv.",
+    "Revenue prévu": "Předp. příjmy",
+    "30 jours · GA4": "30 dní · GA4",
+    "90 jours · GA4": "90 dní · GA4",
+    "Revenu": "Příjmy",
     "Sites critiques à corriger": "Kritické weby k opravě",
     "Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.": "Některé weby mají SEO skóre pod 50/100. Nejprve opravte chybějící tagy a mobilní rychlost.",
     "À prioriser": "K prioritizaci",
@@ -47893,6 +49244,139 @@ function bindGlobalEvents() {
     "Partager": "Sdílet",
     "Nouveau fil": "Nové vlákno",
     "Aucun fichier partagé": "Žádné sdílené soubory",
+    // ── Behavioral AI / Revenue Leak / AI CRO (PR #551) ──
+    "siteUrl requis": "Je vyžadována adresa URL webu",
+    "Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.": "Za posledních 30 dnů nebyly zjištěny žádné použitelné behaviorální signály. Tyto události neměří tržby.",
+    "Attribution financière : données insuffisantes": "Finanční atribuce: nedostatečná data",
+    "Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.": "Behaviorální události používají identifikátor relace trackeru; dostupné tržby z GA4 jsou agregované a neumožňují přesné propojení. Bez tohoto důkazu se nezobrazí žádná pozorovaná ani odhadovaná ztráta.",
+    "Revenu observé par GA4": "Tržby pozorované v GA4",
+    "Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.": "Připojte aktivní vlastnost GA4 s rozpoznanou měnou, aby se zobrazily pozorované tržby. Žádná ztráta se neodhaduje.",
+    "Aucune opportunité observée": "Nebyly pozorovány žádné příležitosti",
+    "{count} opportunités observées": "Pozorované příležitosti: {count}",
+    "Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.": "Bez dat o tržbách propojených s těmito událostmi se nepočítá žádná ztráta v eurech.",
+    "Opportunités de conversion — observations comportementales": "Konverzní příležitosti — behaviorální pozorování",
+    "{events} événements sur {sessions} sessions.": "{events} událostí v {sessions} relacích.",
+    "{events} événements · {sessions} sessions · confiance {confidence} · source {source}": "{events} událostí · {sessions} relací · spolehlivost {confidence} · zdroj {source}",
+    "Revenu": "Tržby",
+    "Corriger point de friction conversion": "Opravit konverzní třecí bod",
+    "Corriger": "Opravit",
+    "Analyse de page": "Analýza stránky",
+    "Signal confirmé": "Potvrzený signál",
+    "Signal récurrent": "Opakující se signál",
+    "Signal à confirmer": "Signál k potvrzení",
+    "Preuve relevée sur la page": "Důkaz nalezený na stránce",
+    "{events} événements · {sessions} sessions": "{events} událostí · {sessions} relací",
+    "Analyse de la page": "Analýza stránky",
+    "{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action": "{h1} nadpisů H1 · {forms} formulářů · {ctas} výzev k akci",
+    "Constats de page mesurés uniquement.": "Zobrazují se pouze změřená zjištění ze stránky.",
+    "Preuve :": "Důkaz:",
+    "Analyse de page indisponible": "Analýza stránky nedostupná",
+    "Aucune recommandation n’est générée sans lecture de la page.": "Bez načtení stránky se negenerují žádná doporučení.",
+    "Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.": "Pozorování založená na skutečně shromážděných událostech. Finanční odhady a předpovědi zůstávají skryté, dokud nejsou propojeny konverze ani data o tržbách.",
+    "Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé.": "Doporučení se objeví po shromáždění skutečných behaviorálních signálů. Žádná míra ani zisk nejsou vymyšleny.",
+    "Examiner les observations": "Zkontrolovat pozorování",
+    "Créer une mission": "Vytvořit misi",
+    "Revoir les données": "Zkontrolovat data",
+    "Signaux observés": "Pozorované signály",
+    "Sessions affectées": "Dotčené relace",
+    "sessions distinctes par signal": "jedinečné relace na signál",
+    "Confiance élevée": "Vysoká spolehlivost",
+    "au moins 30 sessions": "alespoň 30 relací",
+    "Gain financier": "Finanční zisk",
+    "aucune conversion/revenu attribué": "nepřiřazena žádná konverze ani tržba",
+    "Analyse indisponible.": "Analýza nedostupná.",
+    "Aucun point de friction détecté par les contrôles automatiques sur cette page.": "Automatické kontroly na této stránce nezjistily žádný třecí bod.",
+    "Signaux comportementaux et actions CRO": "Behaviorální signály a akce CRO",
+    "Analyser le site actif": "Analyzovat aktivní web",
+    "Mise en œuvre :": "Implementace:",
+    "Source :": "Zdroj:",
+    "Optimiser la conversion": "Optimalizovat konverzi",
+    "Mission": "Mise",
+    "Statut de la recommandation": "Stav doporučení",
+    "🧪 Expériences A/B": "🧪 A/B experimenty",
+    "Aucune expérience": "Žádné experimenty",
+    "Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.": "Vytvořte koncept. Spuštění zůstává zablokované, dokud nový snippet nepotvrdí sběr dat.",
+    "A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}": "A: {aExposures} zobrazení / {aConversions} konverzí · B: {bExposures} / {bConversions}",
+    "Résultat significatif · p={pValue} · gagnant {winner}": "Významný výsledek · p={pValue} · vítěz {winner}",
+    "Non concluant · p={pValue}": "Neprůkazné · p={pValue}",
+    "Données insuffisantes — 30 expositions/variante requises": "Nedostatečná data — je třeba 30 zobrazení na variantu",
+    "Brouillon": "Koncept",
+    "Arrêté": "Zastaveno",
+    "Démarrer": "Spustit",
+    "Arrêter": "Zastavit",
+    "📈 Prévision de conversion": "📈 Předpověď konverzí",
+    "{count} clients": "{count} zákazníků",
+    "🎯 Objectif M+3 :": "🎯 Cíl M+3:",
+    "clients/mois": "zákazníků/měsíc",
+    "Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés": "Snížení míry okamžitého opuštění na mobilu z 32 % na 22 % = odhadem +8 zákazníků/měsíc",
+    "+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours": "V průměru +0.06 p. b./měsíc · V souladu s probíhajícími akcemi CRO",
+    "Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)": "Bez optimalizace formuláře je odhadovaný strop 0.38 % (oproti cílovým 0.41 %)",
+    "Non mesuré; aucun revenu n’est attribué aux événements observés": "Neměřeno; pozorovaným událostem nejsou přiřazeny žádné tržby",
+    "Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.": "Žádná předpověď se nezobrazuje: jsou potřeba pozorované konverze a dostatečné referenční období.",
+    "Fuite détectée": "Zjištěn únik",
+    "Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.": "V náhledu se bez změřených dat o tržbách nezobrazuje žádná finanční ztráta.",
+    "{amount}€/mois": "{amount} €/měsíc",
+    "Aucun revenu attribué aux événements observés": "Pozorovaným událostem nejsou přiřazeny žádné tržby",
+    "Sélectionnez un site enregistré pour isoler les données Behavioral AI.": "Vyberte registrovaný web, aby se izolovala data Behavioral AI.",
+    "Résultats calculés sur un échantillon plafonné d’événements récents.": "Výsledky vypočtené na omezeném vzorku nedávných událostí.",
+    "sessions avec page vue sur cette période": "relací se zobrazením stránky v tomto období",
+    "Aucune soumission de formulaire mesurable.": "Žádné měřitelné odeslání formuláře.",
+    "des sessions observées ont soumis un formulaire": "pozorovaných relací odeslalo formulář",
+    "Taux d’abandon formulaire le plus élevé": "Nejvyšší míra opuštění formuláře",
+    "Recommandations fondées sur les événements": "Doporučení založená na událostech",
+    "Chargement des données comportementales…": "Načítání behaviorálních dat…",
+    "Action": "Akce",
+    "Pages concernées": "Dotčené stránky",
+    "Preuve observée": "Pozorovaný důkaz",
+    "Aucun signal ne dépasse actuellement les seuils de détection.": "Žádný signál aktuálně nepřekračuje prahy detekce.",
+    "Sélectionnez un site et attendez les premiers événements du snippet.": "Vyberte web a počkejte na první události snippetu.",
+    "Sessions avec page vue": "Relace se zobrazením stránky",
+    "Pages visitées": "Navštívené stránky",
+    "Événements page_view observés": "Pozorované události page_view",
+    "Soumissions de formulaire": "Odeslání formulářů",
+    "des sessions": "relací",
+    "Abandons de formulaire": "Opuštění formulářů",
+    "Événements form_abandon observés": "Pozorované události form_abandon",
+    "Comparaison avec la période précédente": "Srovnání s předchozím obdobím",
+    "Sessions avec formulaire envoyé": "Relace s odeslaným formulářem",
+    "Valeurs précédentes · variation par rapport à la période courante": "Předchozí hodnoty · změna oproti aktuálnímu období",
+    "Comparaison limitée par le plafond de données.": "Srovnání omezeno stropem dat.",
+    "Comparaison indisponible sans site sélectionné.": "Srovnání není dostupné bez vybraného webu.",
+    "Référents observés": "Pozorovaní odkazující",
+    "Aucun référent externe mesurable dans les événements reçus.": "V přijatých událostech nejsou žádní měřitelní externí odkazující.",
+    "Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.": "Kampaně UTM a rozlišení nových a vracejících se návštěvníků se neshromažďují.",
+    "Parcours mesuré — page vue vers formulaire": "Změřená cesta — zobrazení stránky k formuláři",
+    "Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.": "V tomto období není žádná měřitelná cesta. Snippet musí sbírat page_view a form_submit.",
+    "de perte mesurée à l’étape": "změřené ztráty v kroku",
+    "Parcours les plus fréquents": "Nejčastější cesty",
+    "Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.": "Přechody se objeví po shromáždění více zobrazení stránek v jedné relaci.",
+    "Pages d’entrée": "Vstupní stránky",
+    "Pages de sortie": "Výstupní stránky",
+    "Frottements observés": "Pozorované třecí body",
+    "Aucun clic de friction ni abandon de formulaire observé sur la période.": "V období nebyly pozorovány žádné frustrační kliky ani opuštění formulářů.",
+    "Non mesuré avec les événements actuels": "Neměřeno s aktuálními událostmi",
+    "Créer et analyser un funnel comportemental": "Vytvořit a analyzovat behaviorální funnel",
+    "Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.": "Zadejte 2 až 6 událostí v pořadí. Volitelně: přidejte :/cesta pro omezení kroku na jednu stránku.",
+    "Analyser": "Analyzovat",
+    "depuis l’étape précédente": "od předchozího kroku",
+    "Période précédente": "Předchozí období",
+    "Résultat limité aux événements les plus récents (plafond de sécurité atteint).": "Výsledek omezen na nejnovější události (dosažen bezpečnostní strop).",
+    "Aucune donnée de page disponible": "Žádná data stránek nejsou k dispozici",
+    "Appareil inconnu": "Neznámé zařízení",
+    "sessions observées": "pozorovaných relací",
+    "Un funnel doit contenir de 2 à 6 étapes.": "Funnel musí obsahovat 2 až 6 kroků.",
+    "Sélectionnez un site avant d’analyser un funnel.": "Před analýzou funnelu vyberte web.",
+    "Insights IA générés à partir des événements observés": "AI poznatky vygenerované z pozorovaných událostí",
+    "Signaux mesurés générés ; recommandations IA indisponibles": "Změřené signály vygenerovány; doporučení AI nejsou dostupná",
+    "Erreur": "Chyba",
+    "Données CRO indisponibles": "Data CRO nejsou dostupná",
+    "{count} observations CRO analysées": "Analyzovaná pozorování CRO: {count}",
+    "Statut non enregistré": "Stav nebyl uložen",
+    "Les événements comportementaux sont indisponibles.": "Behaviorální události nejsou dostupné.",
+    "Les événements comportementaux sont temporairement indisponibles.": "Behaviorální události jsou dočasně nedostupné.",
+    "À traiter": "K řešení",
+    "Appliquée": "Použito",
+    "Écartée": "Zamítnuto",
     }
   };
   // Brazilian Portuguese follows the Portuguese catalog with its own locale
@@ -56490,114 +57974,90 @@ function renderConversion() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'revenue-leak') {
     const _rlData = window.FP_DATA && window.FP_DATA.revenueLeak;
-    const _rlRaw = _rlData && _rlData.leaks && _rlData.leaks.length ? _rlData.leaks : null;
-    const leaks = _rlRaw ? _rlRaw.map(l => ({
-      page: l.title || l.page || 'Page',
-      issue: l.description || '',
-      loss: Math.round(l.estimatedMonthlyLoss || 0) + '€/mois',
-      score: Math.min(100, l.impactScore || 50),
-      type: l.leakType || 'friction',
-      urg: (l.impactScore || 0) >= 85 ? 'critical' : (l.impactScore || 0) >= 65 ? 'high' : 'medium',
+    const _rlAttribution = _rlData?.attribution || { status: 'insufficient_data' };
+    const _rlFinancial = _rlData?.financial || {};
+    const _rlRevenueObserved = _rlFinancial.status === 'observed'
+      && _rlFinancial.observedRevenue != null
+      && Number.isFinite(Number(_rlFinancial.observedRevenue))
+      && /^[A-Z]{3}$/.test(String(_rlFinancial.currency || ''));
+    let _rlRevenueText = '';
+    if (_rlRevenueObserved) {
+      try {
+        _rlRevenueText = new Intl.NumberFormat(getLocale(), {
+          style: 'currency',
+          currency: _rlFinancial.currency,
+          maximumFractionDigits: 2,
+        }).format(Number(_rlFinancial.observedRevenue));
+      } catch {
+        _rlRevenueText = `${Number(_rlFinancial.observedRevenue).toFixed(2)} ${_rlFinancial.currency}`;
+      }
+    }
+    const leaks = (_rlData?.opportunities || []).map(l => ({
+      page: l.page || 'Page',
+      siteUrl: l.siteUrl || '',
+      recommendation: l.recommendation || '',
+      events: Number(l.observedEvents || 0),
+      sessions: Number(l.affectedSessions || 0),
+      confidence: l.confidence || 'low',
       id: l.id,
-    })) : [
-    ];
-    const trustIssues = STATE.behavioral?.trustIssues || (PREVIEW_MODE ? [
-      { issue: "Pas de badge certifié visible",     fix: "Ajouter logo RGE / assurance", effort: "30 min" },
-      { issue: "Aucune mention légale en footer",   fix: "Ajouter mentions légales",    effort: "15 min" },
-      { issue: "Pas de politique de confidentialité",fix: "Ajouter RGPD notice",        effort: "45 min" },
-      { issue: "Photos équipe absentes",            fix: "Section équipe avec photos",  effort: "2h"     },
-    ] : []);
-    const totalLoss = leaks.reduce((s, l) => s + (parseInt(String(l.loss || '0')) || 0), 0);
+    }));
     const _rlIsEmpty = !leaks.length;
-    const _rlEmptyReason = (_rlData && _rlData.emptyReason) || "Aucune fuite de revenus détectée pour le moment — connectez GA4, PageSpeed et Behavioral Analytics pour activer la détection automatique.";
+    const _rlEmptyReason = (_rlData && _rlData.error) || null;
+    const _rlEmptyText = _rlEmptyReason || fpT("Aucun signal comportemental exploitable sur les 30 derniers jours. Les revenus ne sont pas mesurés par ces événements.");
     return `
+      <div class="fp-card fp-mb-20" data-attribution-status="${escHtml(_rlAttribution.status || 'insufficient_data')}" style="border-left:3px solid #f59e0b">
+        <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:5px">${fpT('Attribution financière : données insuffisantes')}</div>
+        <div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(_rlAttribution.message || fpT('Les événements comportementaux utilisent un identifiant de session du tracker; les revenus GA4 disponibles sont agrégés et ne permettent pas une jointure exacte. Aucune perte observée ou estimée ne sera affichée sans cette preuve.'))}</div>
+      </div>
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:8px">📊 ${fpT('Revenu observé par GA4')}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <strong style="font-size:22px;color:var(--fp-text)">${_rlRevenueObserved ? escHtml(_rlRevenueText) : fpT('Indisponible')}</strong>
+          <div style="max-width:620px;font-size:11px;line-height:1.5;color:var(--fp-text-muted)">
+            ${escHtml(_rlFinancial.note || fpT('Connectez une propriété GA4 active avec une devise reconnue pour afficher le revenu observé. Aucune perte n’est estimée.'))}
+          </div>
+        </div>
+      </div>
       ${_rlIsEmpty
         ? `<div style="padding:32px 24px;text-align:center;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
             <div style="font-size:36px;margin-bottom:12px">💸</div>
-            <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune fuite de revenus détectée</div>
-            <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">${escHtml(_rlEmptyReason)}</div>
+            <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">${fpT('Aucune opportunité observée')}</div>
+            <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">${escHtml(_rlEmptyText)}</div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">Lancer la détection</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_REVENUE_LEAK_API.detect(window.FP_DATA?.activeSite)">${fpT('Lancer la détection')}</button>
             </div>
            </div>`
-        : `${aiBlock("Perte de revenus estimée : <strong>" + totalLoss.toLocaleString(getLocale()) + "€/mois</strong> basée sur " + leaks.length + " signal(s) réel(s) détecté(s) (PageSpeed, uptime, trafic organique, comportemental).",
-            ["Créer le plan de correction", "Prioriser les actions", "Rapport de pertes"])}
-
-          <div class="fp-stat-row fp-mb-20">
-            ${statCard("Perte estimée totale", totalLoss.toLocaleString(getLocale()) + "€/mois", "signaux réels uniquement", "down")}
-            ${statCard("Fuites critiques", String(leaks.filter(l => l.urg === "critical").length), "à corriger en urgence", "down")}
-            ${statCard("Quick wins", String(leaks.filter(l => l.urg !== "critical").length), "correctifs < 1h", "up")}
-            ${statCard("Récupération potentielle", "+" + Math.round(totalLoss * 0.65).toLocaleString(getLocale()) + "€/mois", "estimation à 65%", "up")}
-          </div>`
+        : `<div class="fp-card fp-mb-20"><strong>${fpT('{count} opportunités observées', { count:leaks.length })}</strong><div style="font-size:12px;color:var(--fp-text-muted);margin-top:4px">${fpT('Aucune perte en euros n’est calculée sans donnée de revenu reliée à ces événements.')}</div></div>`
       }
 
       <!-- REVENUE LEAK LIST -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon("alert-triangle").replace('stroke="currentColor"', 'stroke="#ef4444"')}
-          Fuites de conversion détectées — Impact financier
+          ${fpT('Opportunités de conversion — observations comportementales')}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${leaks.length === 0
-            ? `<div style="padding:20px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucune fuite détectée — les données apparaîtront ici dès que GA4, PageSpeed ou Behavioral Analytics auront des signaux.</div>`
+            ? `<div style="padding:20px;text-align:center;color:var(--fp-text-muted);font-size:13px">${escHtml(_rlEmptyReason)}</div>`
             : leaks.map((l, i) => {
-            const sc = l.urg === "critical" ? "#ef4444" : l.urg === "high" ? "#f59e0b" : "#2563EB";
+            const sc = "#f59e0b";
             return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border-left:3px solid ${sc};background:${sc}08">
               <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${sc}20;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:${sc}">${i + 1}</div>
               <div style="flex:1">
-                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(l.page)}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(l.issue)}</div>
-                <div style="margin-top:6px">
-                  <div class="fp-progress-track" style="height:4px;max-width:200px">
-                    <div class="fp-progress-fill" style="width:${l.score}%;background:${sc}"></div>
-                  </div>
-                  <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">Score conversion : ${l.score}/100</div>
-                </div>
+                <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${l.siteUrl ? `${escHtml(l.siteUrl)} · ` : ''}${escHtml(l.page)}</div>
+                <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(l.recommendation)} ${fpT('{events} événements sur {sessions} sessions.', { events:l.events, sessions:l.sessions })}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('{events} événements · {sessions} sessions · confiance {confidence} · source {source}', { events:l.events, sessions:l.sessions, confidence:({high:fpT('Élevée'),medium:fpT('Moyenne'),low:fpT('Faible')})[l.confidence] || l.confidence, source:'behavior_events' })}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:15px;font-weight:800;color:${sc}">-${escHtml(l.loss)}</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" onclick="_fpMQ(this.closest('[data-step]')?.dataset?.step||'Corriger point de friction conversion','Conversion','high')">Corriger</button>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text-muted)">${fpT('Revenu')} : ${fpT('Indisponible')}</div>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" onclick="_fpMQ(this.closest('[data-step]')?.dataset?.step||fpT('Corriger point de friction conversion'),'Conversion','high')">${fpT('Corriger')}</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" data-revenue-leak-resolve="${escHtml(l.id || '')}" title="${fpT('Fuite marquée comme résolue')}" onclick="window.FP_REVENUE_LEAK_API.resolve(this.dataset.revenueLeakResolve, this)">✓ ${fpT('Résolu')}</button>
               </div>
             </div>`;
           }).join("")}
         </div>
       </div>
 
-      <!-- TRUST ISSUES + PRIORITY MATRIX -->
-      <div class="fp-grid-2 fp-mb-20">
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">🛡 Problèmes de confiance détectés</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            ${trustIssues.map(t => `
-              <div style="padding:10px 12px;border-radius:8px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15)">
-                <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:3px">⚠ ${escHtml(t.issue)}</div>
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                  <div style="font-size:11px;color:#22c55e">→ ${escHtml(t.fix)}</div>
-                  <span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(t.effort)}</span>
-                </div>
-              </div>
-            `).join("")}
-          </div>
-        </div>
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:10px">⚡ Matrice impact / effort</div>
-          <div style="position:relative;width:100%;height:200px;background:var(--fp-inner-card);border-radius:10px;border:1px solid var(--fp-border)">
-            <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--fp-text-faint)">IMPACT ÉLEVÉ</div>
-            <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--fp-text-faint)">IMPACT FAIBLE</div>
-            <div style="position:absolute;top:50%;left:8px;transform:translateY(-50%);font-size:9px;color:var(--fp-text-faint)">EFFORT FAIBLE</div>
-            <div style="position:absolute;top:50%;right:8px;transform:translateY(-50%);font-size:9px;color:var(--fp-text-faint)">EFFORT ÉLEVÉ</div>
-            <div style="position:absolute;top:50%;left:0;right:0;height:1px;background:var(--fp-track)"></div>
-            <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--fp-track)"></div>
-            <!-- Items plotted -->
-            <div style="position:absolute;top:10%;left:8%;font-size:9px;padding:4px 7px;background:#22c55e20;border:1px solid #22c55e40;border-radius:5px;color:#22c55e">Preuves sociales</div>
-            <div style="position:absolute;top:32%;left:32%;font-size:9px;padding:4px 7px;background:#22c55e20;border:1px solid #22c55e40;border-radius:5px;color:#22c55e">CTA tarifs</div>
-            <div style="position:absolute;top:18%;right:18%;font-size:9px;padding:4px 7px;background:#f59e0b20;border:1px solid #f59e0b40;border-radius:5px;color:#f59e0b">Formulaire</div>
-            <div style="position:absolute;bottom:25%;right:25%;font-size:9px;padding:4px 7px;background:#ef444420;border:1px solid #ef444440;border-radius:5px;color:#ef4444">Chat live</div>
-            <div style="position:absolute;bottom:30%;left:20%;font-size:9px;padding:4px 7px;background:#2563EB20;border:1px solid #2563EB40;border-radius:5px;color:#2563EB">Vitesse mobile</div>
-          </div>
-        </div>
-      </div>
     `;
   }
 
@@ -56607,70 +58067,71 @@ function renderConversion() {
   if (sub === 'cro') {
     const _croRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
     const _priEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
-    const _priWeek  = { high: 'Semaine 1', medium: 'Semaine 2', low: 'Semaine 3' };
-    const roadmap = (_croRecs && _croRecs.length) ? _croRecs.slice(0, 6).map(function(r) {
-      return { week: _priWeek[r.priority] || 'Semaine 2', action: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.1) * 100) + '%', done: r.status === 'implemented', priority: _priEmoji[r.priority] || '🟡' };
-    }) : [
-      { week: "Semaine 1", action: "Simplifier le formulaire (3 champs max)", impact: "+18%", done: false, priority: "🔴" },
-      { week: "Semaine 1", action: "Ajouter CTA urgence above the fold",      impact: "+34%", done: false, priority: "🔴" },
-      { week: "Semaine 2", action: "Afficher avis Google sur la page",         impact: "+15%", done: false, priority: "🟡" },
-      { week: "Semaine 2", action: "Optimiser vitesse mobile (< 2.5s)",        impact: "+22%", done: false, priority: "🟡" },
-      { week: "Semaine 3", action: "Lancer A/B test CTA bouton principal",     impact: "+34%", done: false, priority: "🟢" },
-      { week: "Semaine 4", action: "Installer chat live ou bot qualification",  impact: "+28%", done: false, priority: "🟢" },
-    ];
+    const roadmap = (_croRecs && _croRecs.length) ? _croRecs.map(function(r) {
+      const pageFinding = r.source === 'page' || r.source === 'ai';
+      return {
+        id:r.id, status:r.status || 'pending',
+        week: pageFinding ? fpT('Analyse de page') : fpT(r.confidence === 'high' ? 'Signal confirmé' : r.confidence === 'medium' ? 'Signal récurrent' : 'Signal à confirmer'),
+        action: r.title || r.recommendation,
+        impact: pageFinding ? fpT('Preuve relevée sur la page') : fpT('{events} événements · {sessions} sessions', { events:r.frequency || r.observedEvents || 0, sessions:r.affectedSessions || 0 }),
+        priority: _priEmoji[r.priority] || (pageFinding ? _priEmoji.medium : '🟡'),
+        source: r.source || 'behavior_events', confidence: r.confidence || '',
+        evidence:r.evidence || '', implementation:r.implementation || '',
+        description:r.description || '',
+      };
+    }) : [];
+    const _croPageAnalysis = window.FP_DATA?.cro?.pageAnalysis;
+    const _croPagePanel = !_croPageAnalysis ? '' : _croPageAnalysis.status === 'ok'
+      ? `<div class="fp-card fp-mb-20"><div class="fp-card-title">${fpT('Analyse de la page')} · ${escHtml(_croPageAnalysis.analyzedUrl || _croPageAnalysis.siteUrl || '')}</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">${fpT('{h1} titres H1 · {forms} formulaires · {ctas} appels à l’action', { h1:_croPageAnalysis.signals?.h1Count ?? '—', forms:_croPageAnalysis.signals?.formCount ?? '—', ctas:_croPageAnalysis.signals?.ctaCount ?? '—' })}</div>
+          ${_croPageAnalysis.ai?.status === 'unavailable' ? `<div role="status" style="font-size:11px;color:var(--fp-text-muted);margin-top:6px">${escHtml(_croPageAnalysis.ai.message || fpT('Constats de page mesurés uniquement.'))}</div>` : ''}
+          ${(_croPageAnalysis.findings || []).map(f => `<div style="padding:9px 0;border-top:1px solid var(--fp-border);margin-top:7px"><strong style="font-size:12px">${escHtml(f.title)}</strong><div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${escHtml(f.description)}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">${fpT('Preuve :')} ${escHtml(f.evidence)}</div></div>`).join('')}
+        </div>`
+      : `<div class="fp-card fp-mb-20" role="status"><strong>${fpT('Analyse de page indisponible')}</strong><div style="font-size:12px;color:var(--fp-text-muted);margin-top:4px">${escHtml(_croPageAnalysis.message || fpT('Aucune recommandation n’est générée sans lecture de la page.'))}</div></div>`;
     const experiments = (STATE.cro?.experiments?.length > 0
-      ? STATE.cro.experiments.slice(0, 3).map(ex => ({
-          name: ex.name || ex.page || 'Test A/B',
-          hypo: ex.hypothesis || 'Améliorer le taux de conversion',
-          est:  ex.confidence != null ? '+' + Math.round(ex.confidence) + '%' : 'En cours',
-          dur:  ex.started_at ? 'En cours' : '—',
+      ? STATE.cro.experiments.slice(0, 6).map(ex => ({
+          id: ex.id, name: ex.name || ex.page, hypo: ex.hypothesis || '',
+          status: ex.status || 'draft', page: ex.page || '',
+          a: ex.measurements?.A || { exposures: 0, conversions: 0 },
+          b: ex.measurements?.B || { exposures: 0, conversions: 0 },
+          result: ex.result || { status: 'insufficient_data' },
         }))
-      : PREVIEW_MODE ? [
-          { name: "CTA couleur rouge vs bleu",        hypo: "Rouge augmente urgence et clics",       est: "+12-28%", dur: "2 sem" },
-          { name: "Formulaire 3 vs 8 champs",          hypo: "Friction réduite = conversion doublée", est: "+40-60%", dur: "3 sem" },
-          { name: "Hero avec vidéo vs image statique", hypo: "Vidéo capte mieux sur mobile",          est: "+15-22%", dur: "2 sem" },
-        ] : []);
-    const badges = [
-      { name: "Premier audit",         done: true,  icon: "🎯" },
-      { name: "Funnel analysé",         done: true,  icon: "🔍" },
-      { name: "Premier test A/B lancé", done: false, icon: "🧪" },
-      { name: "Taux > 0.3%",            done: false, icon: "📈" },
-      { name: "Score UX > 80",          done: false, icon: "🎨" },
-      { name: "Zéro fuite détectée",    done: false, icon: "🛡" },
-    ];
-    const forecast = [
-      { month: "Actuel", rate: 0.23, clients: 28 },
-      { month: "M+1",    rate: 0.29, clients: 36 },
-      { month: "M+2",    rate: 0.35, clients: 43 },
-      { month: "M+3",    rate: 0.41, clients: 51 },
-      { month: "M+4",    rate: 0.48, clients: 59 },
-      { month: "M+5",    rate: 0.55, clients: 68 },
-    ].filter(() => PREVIEW_MODE);
+      : []);
+    const forecast = [];
     return `
-      ${isUltra
-        ? aiBlock(STATE.overview?.conversionRate
-            ? "Taux de conversion actuel : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Activez le plan CRO IA complet pour obtenir des recommandations personnalisées et des prévisions de gain basées sur vos données réelles."
-            : "Connectez vos analytics pour activer le plan CRO IA complet : recommandations prioritaires, prévisions de gain et plan d'optimisation sur-mesure.",
-            ["Lancer le plan CRO", "Créer toutes les missions", "Rapport stratégique"])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
-            <div style="font-size:24px">🤖</div>
-            <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Stratège CRO IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Plans de bataille CRO personnalisés, forecasting, expériences intelligentes et recommandations stratégiques.</div></div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpUpgradeCta('ultra')">Passer Ultra</button>
-          </div>`
-      }
+      ${window.FP_DATA?.cro?.error ? `<div role="alert" class="fp-card fp-mb-20">${escHtml(window.FP_DATA.cro.error)}</div>` : ''}
+      ${_croPagePanel}
+      ${aiBlock((_croRecs || []).length
+        ? fpT("Observations fondées sur les événements réellement collectés. Les estimations financières et prévisions restent masquées tant qu’aucune conversion ni donnée de revenu n’est reliée.")
+        : fpT("Les recommandations apparaîtront après la collecte de signaux comportementaux réels. Aucun taux ou gain n’est inventé."),
+        [fpT("Examiner les observations"), fpT("Créer une mission"), fpT("Revoir les données")])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard("Taux actuel", displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? "Secteur : 0.18%" : "Connectez analytics", "neutral")}
-        ${statCard("Taux cible M+3", displayStat(STATE.overview?.conversionRateTarget != null ? (STATE.overview.conversionRateTarget*100).toFixed(2)+'%' : null, null), PREVIEW_MODE ? "Objectif à définir" : "Connectez analytics", "neutral")}
-        ${statCard("Gain clients estimé", displayStat(null, "+23/mois"), PREVIEW_MODE ? "en 3 mois avec plan" : "Connectez analytics", "neutral")}
-        ${statCard("ROI estimé plan CRO", displayStat(null, "+2 300€/mois"), PREVIEW_MODE ? "à 100€ client moyen" : "Connectez analytics", "neutral")}
+        ${statCard(fpT("Signaux observés"), (Array.isArray(_croRecs) && !window.FP_DATA?.cro?.error) ? String(_croRecs.length) : fpT("Indisponible"), fpT("30 derniers jours"), "neutral")}
+        ${statCard(fpT("Sessions affectées"), (Array.isArray(_croRecs) && !window.FP_DATA?.cro?.error) ? String(_croRecs.reduce((n, r) => n + Number(r.affectedSessions || 0), 0)) : fpT("Indisponible"), fpT("sessions distinctes par signal"), "neutral")}
+        ${statCard(fpT("Confiance élevée"), (Array.isArray(_croRecs) && !window.FP_DATA?.cro?.error) ? String(_croRecs.filter(r => r.confidence === 'high').length) : fpT("Indisponible"), fpT("au moins 30 sessions"), "neutral")}
+        ${statCard(fpT("Gain financier"), fpT("Indisponible"), fpT("aucune conversion/revenu attribué"), "neutral")}
       </div>
+
+      ${(function(){
+        const pa = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.pageAnalysis;
+        if (!pa) return '';
+        if (pa.status !== 'ok') return `<div class="fp-card fp-mb-20" data-cro-page-analysis="unavailable"><div class="fp-card-title" style="margin-bottom:8px">${fpT('Analyse de la page')}</div><div style="font-size:12px;color:var(--fp-text-muted)">${escHtml(pa.message || fpT('Analyse indisponible.'))}</div></div>`;
+        const fs = pa.findings || [];
+        return `<div class="fp-card fp-mb-20" data-cro-page-analysis="ok"><div class="fp-card-title" style="margin-bottom:8px">${fpT('Analyse de la page')} · ${escHtml(pa.analyzedUrl || '')}</div>
+          ${pa.ai && pa.ai.status === 'unavailable' ? `<div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:8px">${escHtml(pa.ai.message || '')}</div>` : ''}
+          ${fs.length === 0 ? `<div style="font-size:12px;color:var(--fp-text-muted)">${fpT('Aucun point de friction détecté par les contrôles automatiques sur cette page.')}</div>` : fs.map(f => `<div style="padding:8px 0;border-top:1px solid var(--fp-border)"><div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(f.title)}</div><div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${escHtml(f.description)}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${fpT('Preuve :')} ${escHtml(f.evidence)}</div></div>`).join('')}
+        </div>`;
+      })()}
 
       <!-- ROADMAP -->
       <div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">
-          ${svgIcon("map").replace('stroke="currentColor"', 'stroke="#2563EB"')}
-          Plan d\'optimisation CRO — 4 semaines
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <div class="fp-card-title" style="margin-bottom:0">
+            ${svgIcon("map").replace('stroke="currentColor"', 'stroke="#2563EB"')}
+            ${fpT('Signaux comportementaux et actions CRO')}
+          </div>
+          ${['owner','admin','member'].includes(String(STATE.me?.role || 'viewer').toLowerCase()) ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_CRO_API.generate(window.FP_DATA?.activeSite || STATE.me?.org?.website || '')">${fpT('Analyser le site actif')}</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${roadmap.map((r, i) => `
@@ -56681,8 +58142,15 @@ function renderConversion() {
                 <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(r.action)}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:12px;font-weight:800;color:#22c55e">${escHtml(r.impact)}</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="_fpMQ('Optimiser la conversion','Conversion','medium')">Mission</button>
+                <div style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${escHtml(r.impact)}</div>
+                ${r.description ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${escHtml(r.description)}</div>` : ''}
+                ${r.evidence ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">${fpT('Preuve :')} ${escHtml(r.evidence)}</div>` : ''}
+                ${r.implementation ? `<div style="font-size:10px;color:var(--fp-text-muted);margin-top:3px">${fpT('Mise en œuvre :')} ${escHtml(r.implementation)}</div>` : ''}
+                <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Source :')} ${escHtml(r.source === 'ai' ? fpT('Analyse IA') : r.source === 'page' ? fpT('Analyse de page') : 'behavior_events')}${r.confidence ? ` · ${fpT('confiance')} ${escHtml(({high:fpT('Élevée'),medium:fpT('Moyenne'),low:fpT('Faible')})[r.confidence] || r.confidence)}` : ''}</div>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="_fpMQ(fpT('Optimiser la conversion'),'Conversion','medium')">${fpT('Mission')}</button>
+                ${r.id ? `<select class="fp-input" aria-label="${fpT('Statut de la recommandation')}" data-rec-id="${escHtml(r.id)}" onchange="window.FP_CRO_API.updateStatus(this.dataset.recId,this.value)" ${['owner','admin','member'].includes(String(STATE.me?.role || 'viewer').toLowerCase()) ? '' : 'disabled'}>
+                  ${[['pending','À traiter'],['in_progress','En cours'],['implemented','Appliquée'],['dismissed','Écartée']].map(([value,label]) => `<option value="${value}" ${r.status === value ? 'selected' : ''}>${fpT(label)}</option>`).join('')}
+                </select>` : ''}
               </div>
             </div>
           `).join("")}
@@ -56692,76 +58160,63 @@ function renderConversion() {
       <!-- EXPERIMENTS + FORECAST -->
       <div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">🧪 Expériences intelligentes</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div class="fp-card-title">${fpT('🧪 Expériences A/B')}</div></div>
           <div style="display:flex;flex-direction:column;gap:10px">
             ${experiments.length === 0
-              ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint)"><div style="font-size:24px;margin-bottom:8px">🧪</div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">Aucun test A/B en cours</div><div style="font-size:11px;margin-top:4px">Connectez vos données CRO pour démarrer une expérience.</div></div>`
+              ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint)"><div style="font-size:24px;margin-bottom:8px">🧪</div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">${fpT('Aucune expérience')}</div><div style="font-size:11px;margin-top:4px">${fpT('Créez un brouillon. Le démarrage reste bloqué tant que le nouveau snippet n’a pas confirmé sa collecte.')}</div></div>`
               : experiments.map(ex => `
               <div style="padding:12px 14px;border-radius:10px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.2)">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(ex.name)}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">"${escHtml(ex.hypo)}"</div>
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                  <div>
-                    <span style="font-size:11px;font-weight:700;color:#22c55e">${escHtml(ex.est)}</span>
-                    <span style="font-size:10px;color:var(--fp-text-faint)"> · Durée : ${escHtml(ex.dur)}</span>
+                <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${escHtml(ex.hypo)} · ${escHtml(ex.page)}</div>
+                <div style="font-size:10px;color:var(--fp-text-muted)">${fpT('A : {aExposures} expositions / {aConversions} conversions · B : {bExposures} / {bConversions}', { aExposures:ex.a.exposures, aConversions:ex.a.conversions, bExposures:ex.b.exposures, bConversions:ex.b.conversions })}</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
+                  <span style="font-size:11px;font-weight:700;color:var(--fp-text-muted)">${ex.result.status === 'significant' ? fpT('Résultat significatif · p={pValue} · gagnant {winner}', { pValue:Number(ex.result.pValue).toFixed(3), winner:escHtml(ex.result.winner) }) : ex.result.status === 'inconclusive' ? fpT('Non concluant · p={pValue}', { pValue:Number(ex.result.pValue).toFixed(3) }) : fpT('Données insuffisantes — 30 expositions/variante requises')} · ${escHtml(({draft:fpT('Brouillon'),running:fpT('En cours'),stopped:fpT('Arrêté')})[ex.status] || ex.status)}</span>
+                  <div style="display:flex;gap:6px;flex-shrink:0">
+                    ${ex.status === 'draft' ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.start('${escHtml(ex.id)}')">${fpT('Démarrer')}</button>` : ex.status === 'running' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_AB_TEST_API&&window.FP_AB_TEST_API.stop('${escHtml(ex.id)}')">${fpT('Arrêter')}</button>` : ''}
+                    ${ex.status === 'draft' || ex.status === 'stopped' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-ab-delete="${escHtml(ex.id)}">${fpT('Supprimer')}</button>` : ''}
                   </div>
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('ux-lab')">Configurer →</button>
                 </div>
               </div>
             `).join("")}
           </div>
         </div>
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">📈 Prévision de conversion</div>
+          <div class="fp-card-title" style="margin-bottom:14px">${fpT('📈 Prévision de conversion')}</div>
           <div style="display:flex;gap:8px;align-items:flex-end;height:120px;margin-bottom:12px">
             ${forecast.map((f, i) => `
               <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
                 <div style="font-size:11px;font-weight:700;color:${i === 0 ? "var(--fp-text-muted)" : "#22c55e"}">${f.rate}%</div>
                 <div style="width:100%;max-width:50px;height:${Math.round(f.rate / 0.41 * 100)}px;background:${i === 0 ? "rgba(37,99,235,0.3)" : "linear-gradient(180deg,rgba(34,197,94,0.6),rgba(34,197,94,0.1))"};border-radius:6px 6px 0 0;border-top:2px solid ${i === 0 ? "#2563EB" : "#22c55e"}"></div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(f.month)}</div>
-                <div style="font-size:9px;color:var(--fp-text-faint)">${f.clients} clients</div>
+                <div style="font-size:9px;color:var(--fp-text-faint)">${fpT('{count} clients', { count:f.clients })}</div>
               </div>
             `).join("")}
           </div>
           ${forecast.length >= 4 ? `<div style="display:flex;flex-direction:column;gap:6px">
             <div style="padding:10px;background:rgba(34,197,94,0.06);border-radius:8px;font-size:12px;color:#22c55e;text-align:center">
-              🎯 Objectif M+3 : <strong>0.41%</strong> — +${forecast.length >= 4 ? forecast[3].clients - forecast[0].clients : '—'} clients/mois
+              ${fpT('🎯 Objectif M+3 :')} <strong>0.41%</strong> — +${forecast.length >= 4 ? forecast[3].clients - forecast[0].clients : '—'} ${fpT('clients/mois')}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
               <div style="padding:8px 10px;background:rgba(37,99,235,0.05);border-radius:8px;border-left:3px solid #2563EB;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#2563EB">Levier principal</strong> — Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés
+                <strong style="color:#2563EB">${fpT('Levier principal')}</strong> — ${fpT('Réduire le taux de rebond mobile de 32% à 22% = +8 clients/mois estimés')}
               </div>
               <div style="padding:8px 10px;background:rgba(34,197,94,0.05);border-radius:8px;border-left:3px solid #22c55e;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#22c55e">Tendance</strong> — +0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours
+                <strong style="color:#22c55e">${fpT('Tendance')}</strong> — ${fpT('+0.06 pts/mois en moyenne · Cohérent avec les actions CRO en cours')}
               </div>
               <div style="padding:8px 10px;background:rgba(245,158,11,0.05);border-radius:8px;border-left:3px solid #f59e0b;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#f59e0b">Risque</strong> — Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)
+                <strong style="color:#f59e0b">${fpT('Risque')}</strong> — ${fpT('Sans optimisation formulaire, plafond estimé à 0.38% (vs 0.41% ciblé)')}
               </div>
               <div style="padding:8px 10px;background:rgba(139,92,246,0.05);border-radius:8px;border-left:3px solid #8b5cf6;font-size:11px;color:var(--fp-text-muted)">
-                <strong style="color:#8b5cf6">Impact revenus</strong> — 0.55% en M+5 = +40 clients vs actuel · +12 000€/mois estimés
+                <strong style="color:#8b5cf6">${fpT('Impact revenus')}</strong> — ${fpT('Non mesuré; aucun revenu n’est attribué aux événements observés')}
               </div>
             </div>
           </div>` : `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">
             <div style="font-size:20px;margin-bottom:8px">📊</div>
-            <div>Connectez vos analytics pour voir les prévisions de conversion personnalisées</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:10px" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>
+                <div>${fpT('Aucune prévision affichée : il faut des conversions observées et une période de référence suffisante.')}</div>
           </div>`}
         </div>
       </div>
 
-      <!-- GAMIFICATION BADGES -->
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">🏆 CRO Milestones</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
-          ${badges.map(b => `
-            <div style="padding:14px;border-radius:12px;text-align:center;border:1px solid ${b.done ? "rgba(34,197,94,0.3)" : "var(--fp-border)"};background:${b.done ? "rgba(34,197,94,0.06)" : "rgba(255,255,255,0.02)"}">
-              <div style="font-size:28px;margin-bottom:6px;opacity:${b.done ? 1 : 0.3}">${b.icon}</div>
-              <div style="font-size:11px;font-weight:600;color:${b.done ? "var(--fp-text)" : "var(--fp-text-faint)"}">${escHtml(b.name)}</div>
-              <div style="margin-top:6px">${badge(b.done ? "Débloqué" : "Verrouillé", b.done ? "#22c55e" : "#64748b")}</div>
-            </div>
-          `).join("")}
-        </div>
-      </div>
     `;
   }
 
@@ -56769,7 +58224,8 @@ function renderConversion() {
   // DEFAULT (null) — Conversion Command Center
   // ══════════════════════════════════════════════════════════
   const _rlSum = window.FP_DATA && window.FP_DATA.revenueLeak && window.FP_DATA.revenueLeak.summary;
-  const leakTotal = _rlSum ? (_rlSum.totalMonthlyLoss || null) : null;
+  const leakTotal = _rlSum && typeof _rlSum.totalMonthlyLoss === "number" && Number.isFinite(_rlSum.totalMonthlyLoss)
+    ? _rlSum.totalMonthlyLoss : null;
   const _behConv = window.FP_DATA && window.FP_DATA.behavioral && window.FP_DATA.behavioral.sessionStats;
   const sessions = _behConv ? [
     { label: "Engagement moyen",       val: (_behConv.avgEngagement || null) !== null ? _behConv.avgEngagement + '%' : '—', delta: "score session",  bad: (_behConv.avgEngagement || 100) < 60  },
@@ -56825,7 +58281,7 @@ function renderConversion() {
       ${statCard("Taux de conversion", displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? "+0.04% vs M-1" : "Connectez analytics", "neutral", PREVIEW_MODE ? "Secteur : 0.18%" : "")}
       ${statCard("Clients/mois", displayStat(STATE.overview?.clientsPerMonth, "28"), PREVIEW_MODE ? "+4 vs M-1" : "Connectez analytics", "neutral")}
       ${statCard("Revenu estimé", displayStat(STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString(getLocale()) + "€/mois" : null, PREVIEW_MODE ? "3 220€/mois" : null), STATE.overview?.revenue != null ? "+400€ vs M-1" : PREVIEW_MODE ? "estimé ce mois" : "Connectez analytics", STATE.overview?.revenue != null ? "up" : "neutral")}
-      ${statCard("Perte rev. détectée", displayStat(leakTotal !== null ? leakTotal.toLocaleString(getLocale()) + "€/mois" : null, PREVIEW_MODE ? "5 070€/mois" : null), leakTotal !== null || PREVIEW_MODE ? "fuites actives détectées" : "Connectez analytics", leakTotal !== null ? "down" : "neutral")}
+      ${statCard("Perte rev. détectée", displayStat(leakTotal !== null ? leakTotal.toLocaleString(getLocale()) + "€/mois" : null, PREVIEW_MODE ? "5 070€/mois" : null, fpT("Indisponible")), leakTotal !== null || PREVIEW_MODE ? "fuites actives détectées" : "Connectez analytics", leakTotal !== null ? "down" : "neutral")}
     </div>
 
     ${aiBlock(
@@ -56955,42 +58411,26 @@ function renderConversion() {
         </div>
         ${(function() {
           const _realLeaks = window.FP_DATA && window.FP_DATA.revenueLeak && window.FP_DATA.revenueLeak.leaks;
-          const _icons = { slow_page:'⏱️', dead_cta:'📢', abandoned_cart:'🛒', friction:'📱', no_cta:'📝' };
           if (_realLeaks && _realLeaks.length > 0) {
             return _realLeaks.slice(0, 4).map(l => {
-              const lc = (l.impactScore||0) >= 75 ? '#ef4444' : '#f59e0b';
-              const lossStr = l.monthlyLoss ? l.monthlyLoss.toLocaleString(getLocale()) + '€/mois' : '—';
+              const lc = '#f59e0b';
               return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
                 <div style="display:flex;align-items:center;gap:8px">
                   <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
-                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.title||l.description||'Fuite détectée')}</span>
+                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.title||l.description||fpT('Fuite détectée'))}</span>
                 </div>
-                <span style="font-size:12px;font-weight:800;color:${lc}">-${lossStr}</span>
+                <span style="font-size:11px;color:var(--fp-text-muted)">${fpT('Revenu')} : ${fpT('Indisponible')}</span>
               </div>`;
             }).join('');
           }
           if (PREVIEW_MODE) {
-            return [
-              { page: "Formulaire (8 champs)",  loss: "1 890€/mois", urg: "critical" },
-              { page: "CTA tarifs invisible",   loss: "1 240€/mois", urg: "critical" },
-              { page: "Vitesse mobile 3.2s",    loss: "820€/mois",   urg: "high"     },
-              { page: "Pas de preuves sociales",loss: "630€/mois",   urg: "high"     },
-            ].map(l => {
-              const lc = l.urg === "critical" ? "#ef4444" : "#f59e0b";
-              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
-                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.page)}</span>
-                </div>
-                <span style="font-size:12px;font-weight:800;color:${lc}">-${escHtml(l.loss)}</span>
-              </div>`;
-            }).join('');
+            return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Aucune perte financière n’est affichée en aperçu sans données de revenus mesurées.')}</div>`;
           }
-          return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez vos analytics pour détecter les fuites de revenus →</div>`;
+          return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">${fpT('Connectez vos analytics pour détecter les fuites de revenus →')}</div>`;
         })()}
         <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.08);border-radius:8px;text-align:center">
-          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + leakTotal.toLocaleString(getLocale()) + '€/mois' : PREVIEW_MODE ? '-5 070€/mois' : '—'}</div>
-          <div style="font-size:10px;color:var(--fp-text-faint)">Perte totale estimée à corriger</div>
+          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + fpT('{amount}€/mois', { amount:leakTotal.toLocaleString(getLocale()) }) : fpT('Indisponible')}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint)">${fpT('Aucun revenu attribué aux événements observés')}</div>
         </div>
       </div>
     </div>
@@ -59116,30 +60556,37 @@ function renderDataExplorer() {
   // SUB: USER BEHAVIOR LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'behavior') {
-    const userFlowSteps = STATE.behavioral?.userFlowSteps || (PREVIEW_MODE ? [
-      { stage: 'Atterrissage',     users: 12640, drop: null,  next: 7820 },
-      { stage: 'Navigation',       users: 7820,  drop: 38.1,  next: 3240 },
-      { stage: 'Page de service',  users: 3240,  drop: 58.6,  next: 892  },
-      { stage: 'Contact initié',   users: 892,   drop: 72.5,  next: 134  },
-      { stage: 'Conversion',       users: 134,   drop: 85.0,  next: 28   },
-    ] : []);
-    const segments = STATE.behavioral?.segments || (PREVIEW_MODE ? [
-      { name: 'Visiteurs fidèles',    pct: 18, conv: 4.8, eng: 88, color: '#22c55e', desc: '2+ visites · session > 3 min' },
-      { name: 'Explorateurs mobiles', pct: 42, conv: 0.8, eng: 41, color: '#f59e0b', desc: 'Mobile · 1 session · rebond 72%' },
-      { name: 'Chercheurs locaux',    pct: 24, conv: 3.2, eng: 76, color: '#2563EB', desc: 'Google Maps · recherche locale' },
-      { name: 'Rebondisseurs',        pct: 16, conv: 0.0, eng: 12, color: '#ef4444', desc: '< 10 sec · 0 interaction' },
-    ] : []);
-    const pageEngage = STATE.behavioral?.pageEngage || (PREVIEW_MODE ? [
-      { page: 'Accueil',    eng: 62, scroll: 48, time: '1m 12s', abandon: 38 },
-      { page: 'Services',   eng: 71, scroll: 61, time: '2m 04s', abandon: 29 },
-      { page: 'Tarifs',     eng: 48, scroll: 39, time: '0m 58s', abandon: 61 },
-      { page: 'Contact',    eng: 38, scroll: 28, time: '0m 32s', abandon: 67 },
-      { page: 'Blog',       eng: 84, scroll: 78, time: '3m 28s', abandon: 16 },
-    ] : []);
+    const _NA = fpT('Indisponible'); // valeur absente/null : jamais affichee comme un zero mesure
+    const behavioralAnalysis = STATE.behavioral?.analysis || null;
+    const behavioralInsights = window.FP_DATA?.behavioral?.insights || [];
+    const behavioralError = STATE.behavioral?.error || null;
+    const behavioralLoading = STATE.behavioral?.loading || false;
+    const userFlowSteps = STATE.behavioral?.userFlowSteps || [];
+    const segments = STATE.behavioral?.segments || [];
+    const pageEngage = STATE.behavioral?.pageEngage || [];
+    const behavioralFunnel = window.FP_DATA?.behavioral?.customFunnel || null;
+    const journeys = behavioralAnalysis?.journeys || [];
+    const friction = behavioralAnalysis?.friction || [];
+    const periodComparison = behavioralAnalysis?.comparison || null;
+    const flowMax = Math.max(1, ...userFlowSteps.map(s => s.users || 0));
+    const totalBehaviorSessions = behavioralAnalysis?.sessionsWithPageView || 0;
+    const formSubmitRate = totalBehaviorSessions
+      ? Math.round(behavioralAnalysis.sessionsWithFormSubmit / totalBehaviorSessions * 1000) / 10
+      : null;
+    const topLoss = userFlowSteps.find(s => s.drop !== null && s.drop > 0);
+    const siteSelectionMessage = !STATE.siteUrl ? fpT('Sélectionnez un site enregistré pour isoler les données Behavioral AI.') : null;
     return `
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px">
+        <label for="fp-behavior-period" style="font-size:11px;color:var(--fp-text-muted)">${fpT('Période')}</label>
+        <select id="fp-behavior-period" class="fp-select" onchange="window.FP_BEHAVIORAL_API.setPeriod(this.value)">
+          ${[7,30,90].map(d=>`<option value="${d}" ${(behavioralAnalysis?.periodDays||30)===d?'selected':''}>${d} ${fpT('jours')}</option>`).join('')}
+        </select>
+      </div>
+      ${siteSelectionMessage ? `<div role="status" class="fp-card fp-mb-20" style="padding:14px;color:var(--fp-text-muted);font-size:12px">${siteSelectionMessage}</div>` : ''}
+      ${behavioralAnalysis?.dataLimited ? `<div role="status" style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:rgba(245,158,11,.08);color:#f59e0b;font-size:11px">${fpT('Résultats calculés sur un échantillon plafonné d’événements récents.')}</div>` : ''}
       ${isPro
-        ? aiBlock(segments.length > 0
-            ? (() => { const _mob = segments.find(s=>s.name.toLowerCase().includes('mobile')||s.pct>35&&s.conv<1); const _loc = segments.find(s=>s.name.toLowerCase().includes('local')||s.name.toLowerCase().includes('maps')); const _worst = [...pageEngage].sort((a,b)=>b.abandon-a.abandon)[0]; return (_mob ? `<strong>${_mob.name} (${_mob.pct}%)</strong> ont un taux de conversion ${_mob.conv}% — le segment le plus faible. ` : '') + (_loc ? `Les visiteurs locaux convertissent à ${_loc.conv}%. ` : '') + (_worst ? `La page ${_worst.page} génère ${_worst.abandon}% d'abandons.` : ''); })()
+        ? aiBlock(behavioralAnalysis
+            ? (() => { const _worst = [...pageEngage].filter(p=>p.abandon!==null).sort((a,b)=>b.abandon-a.abandon)[0]; return `${totalBehaviorSessions} ${fpT('sessions avec page vue sur cette période')}. ` + (formSubmitRate===null ? fpT('Aucune soumission de formulaire mesurable.') : `${formSubmitRate}% ${fpT('des sessions observées ont soumis un formulaire')}. `) + (_worst ? `${fpT('Taux d’abandon formulaire le plus élevé')}: <strong>${escHtml(_worst.page)} (${_worst.abandon}%)</strong>.` : ''); })()
             : 'Connectez vos analytics pour analyser les flux utilisateurs, segments comportementaux et taux d\'abandon par page.',
             ['Optimiser pour les mobiles', 'Analyser la page Tarifs', 'Plan segmentation'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
@@ -59149,38 +60596,110 @@ function renderDataExplorer() {
           </div>`
       }
 
+      <div class="fp-card fp-mb-20">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+          <div class="fp-card-title" style="margin:0">🧠 ${fpT('Recommandations fondées sur les événements')}</div>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_BEHAVIORAL_API.generateInsights(window.STATE?.siteUrl||'')">${fpT('Générer')}</button>
+        </div>
+        ${behavioralLoading ? `<div style="padding:16px;text-align:center;color:var(--fp-text-muted)">${fpT('Chargement des données comportementales…')}</div>` : ''}
+        ${behavioralError ? `<div role="alert" style="padding:12px;border-radius:8px;background:rgba(239,68,68,.08);color:#ef4444;font-size:11px">${escHtml(behavioralError)}</div>` : ''}
+        ${!behavioralLoading && !behavioralError && behavioralInsights.length ? `<div style="display:flex;flex-direction:column;gap:9px">${behavioralInsights.map(item=>`
+          <div style="padding:11px 13px;border:1px solid var(--fp-border);border-radius:9px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;font-weight:700;color:${item.severity==='critical'?'#ef4444':item.severity==='high'?'#f59e0b':'#2563EB'}">${escHtml(item.severity)}</span><strong style="font-size:12px">${escHtml(item.title)}</strong></div>
+            <div style="font-size:11px;color:var(--fp-text-muted);margin-top:5px">${escHtml(item.description)}</div>
+            ${item.aiSuggestion?`<div style="font-size:11px;color:var(--fp-text);margin-top:7px"><strong>${fpT('Action')}:</strong> ${escHtml(item.aiSuggestion)}</div>`:''}
+            ${Array.isArray(item.affectedPages)&&item.affectedPages.length?`<div style="font-size:10px;color:var(--fp-text-faint);margin-top:5px">${fpT('Pages concernées')}: ${item.affectedPages.map(escHtml).join(', ')}</div>`:''}
+            ${/^\d+ événements observés$/.test(String(item.estimatedImpact||''))?`<div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('Preuve observée')}: ${escHtml(item.estimatedImpact)}</div>`:''}
+          </div>`).join('')}</div>` : ''}
+        ${!behavioralLoading && !behavioralError && !behavioralInsights.length ? `<div style="padding:12px;text-align:center;color:var(--fp-text-faint);font-size:11px">${behavioralAnalysis ? fpT('Aucun signal ne dépasse actuellement les seuils de détection.') : fpT('Sélectionnez un site et attendez les premiers événements du snippet.')}</div>` : ''}
+      </div>
+
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Sessions analysées', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString(getLocale()) : null, '12 640'), PREVIEW_MODE ? 'ce mois' : 'Connectez analytics', 'neutral')}
-        ${statCard('Taux engagement moy.', displayStat(null, '61%'), PREVIEW_MODE ? '+8% vs M-1' : 'Connectez analytics', 'neutral')}
-        ${statCard('Abandons funnel', displayStat(null, '85%'), PREVIEW_MODE ? 'avant conversion' : 'Connectez analytics', 'neutral')}
-        ${statCard('Durée session moy.', displayStat(null, '1m 52s'), PREVIEW_MODE ? '+18s vs M-1' : 'Connectez analytics', 'neutral')}
+        ${statCard(fpT('Sessions avec page vue'), behavioralAnalysis ? totalBehaviorSessions.toLocaleString(getLocale()) : _NA, `${behavioralAnalysis?.periodDays||30} ${fpT('jours')}`, 'neutral')}
+        ${statCard(fpT('Pages visitées'), behavioralAnalysis ? behavioralAnalysis.pageViews.toLocaleString(getLocale()) : _NA, fpT('Événements page_view observés'), 'neutral')}
+        ${statCard(fpT('Soumissions de formulaire'), behavioralAnalysis ? behavioralAnalysis.sessionsWithFormSubmit.toLocaleString(getLocale()) : _NA, formSubmitRate===null ? fpT('Donnée indisponible') : `${formSubmitRate}% ${fpT('des sessions')}`, 'neutral')}
+        ${statCard(fpT('Abandons de formulaire'), behavioralAnalysis ? behavioralAnalysis.formAbandons.toLocaleString(getLocale()) : _NA, fpT('Événements form_abandon observés'), 'neutral')}
+      </div>
+      <div class="fp-grid-2 fp-mb-20">
+        <div class="fp-card">
+          <div class="fp-card-title" style="margin-bottom:8px">${fpT('Comparaison avec la période précédente')}</div>
+          ${periodComparison ? `<div style="display:flex;gap:20px;flex-wrap:wrap">
+            <div><div style="font-size:10px;color:var(--fp-text-muted)">${fpT('Sessions avec page vue')}</div><strong>${periodComparison.previousSessionsWithPageView.toLocaleString(getLocale())}</strong><span style="margin-left:7px;color:${periodComparison.sessionsChangePercent==null?'var(--fp-text-faint)':periodComparison.sessionsChangePercent>=0?'#22c55e':'#ef4444'}">${periodComparison.sessionsChangePercent==null?_NA:`${periodComparison.sessionsChangePercent>0?'+':''}${periodComparison.sessionsChangePercent}%`}</span></div>
+            <div><div style="font-size:10px;color:var(--fp-text-muted)">${fpT('Sessions avec formulaire envoyé')}</div><strong>${periodComparison.previousSessionsWithFormSubmit.toLocaleString(getLocale())}</strong><span style="margin-left:7px;color:${periodComparison.formSubmitsChangePercent==null?'var(--fp-text-faint)':periodComparison.formSubmitsChangePercent>=0?'#22c55e':'#ef4444'}">${periodComparison.formSubmitsChangePercent==null?_NA:`${periodComparison.formSubmitsChangePercent>0?'+':''}${periodComparison.formSubmitsChangePercent}%`}</span></div>
+          </div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:7px">${fpT('Valeurs précédentes · variation par rapport à la période courante')}</div>${periodComparison.dataLimited?`<div style="font-size:10px;color:#f59e0b;margin-top:5px">${fpT('Comparaison limitée par le plafond de données.')}</div>`:''}` : `<div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Comparaison indisponible sans site sélectionné.')}</div>`}
+        </div>
+        <div class="fp-card">
+          <div class="fp-card-title" style="margin-bottom:8px">${fpT('Référents observés')}</div>
+          ${(behavioralAnalysis?.referrerSegments||[]).length ? `<div style="display:flex;flex-direction:column;gap:6px">${behavioralAnalysis.referrerSegments.map(source=>`<div style="display:flex;justify-content:space-between;font-size:11px"><span>${escHtml(source.referrerHost)}</span><strong>${source.sessions} ${fpT('sessions')}</strong></div>`).join('')}</div>` : `<div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Aucun référent externe mesurable dans les événements reçus.')}</div>`}
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:7px">${fpT('Les campagnes UTM et la distinction nouveaux/récurrents ne sont pas collectées.')}</div>
+        </div>
       </div>
 
       <!-- USER FLOW -->
       <div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('git-branch').replace('stroke="currentColor"', 'stroke="#8b5cf6"')}
-          Flux utilisateur — Du trafic à la conversion
+          ${fpT('Parcours mesuré — page vue vers formulaire')}
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
+          ${userFlowSteps.length ? '' : `<div style="padding:18px;text-align:center;color:var(--fp-text-faint)">${fpT('Aucun parcours mesurable sur cette période. Le snippet doit collecter page_view et form_submit.')}</div>`}
           ${userFlowSteps.map((s, idx) => `
             <div style="display:flex;align-items:center;gap:10px">
               <div style="width:130px;font-size:11px;color:var(--fp-text-muted);text-align:right;flex-shrink:0">${escHtml(s.stage)}</div>
               <div style="flex:1;background:var(--fp-inner-card);border-radius:6px;height:32px;overflow:hidden">
-                <div style="height:100%;width:${Math.max(2, s.users / 12640 * 100)}%;background:linear-gradient(90deg,${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}99,${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}33);border-radius:6px;display:flex;align-items:center;padding-left:8px">
-                  ${s.users >= 3000 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.users.toLocaleString(getLocale())}</span>` : ''}
+                <div style="height:100%;width:${Math.max(2, s.users / flowMax * 100)}%;background:linear-gradient(90deg,${idx === 0 ? '#2563EB' : idx === userFlowSteps.length-1 ? '#22c55e' : '#8b5cf6'}99,${idx === 0 ? '#2563EB' : idx === userFlowSteps.length-1 ? '#22c55e' : '#8b5cf6'}33);border-radius:6px;display:flex;align-items:center;padding-left:8px">
+                  ${s.users > 0 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.users.toLocaleString(getLocale())}</span>` : ''}
                 </div>
               </div>
               <div style="min-width:80px;text-align:right;flex-shrink:0">
-                <div style="font-size:12px;font-weight:800;color:${idx === 0 ? '#2563EB' : idx === 4 ? '#22c55e' : '#8b5cf6'}">${s.users.toLocaleString(getLocale())}</div>
+                <div style="font-size:12px;font-weight:800;color:${idx === 0 ? '#2563EB' : idx === userFlowSteps.length-1 ? '#22c55e' : '#8b5cf6'}">${s.users.toLocaleString(getLocale())}</div>
                 ${s.drop !== null ? `<div style="font-size:10px;color:#ef4444;font-weight:600">-${s.drop}%</div>` : ''}
               </div>
             </div>
           `).join('')}
         </div>
-        <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;font-size:11px;color:#ef4444">
-          ⚠ 85% des visiteurs n\'atteignent pas la conversion — la plus grande perte : Navigation → Service (-59%)
+        ${topLoss ? `<div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;font-size:11px;color:#ef4444">⚠ ${escHtml(topLoss.drop)}% ${fpT('de perte mesurée à l’étape')} ${escHtml(topLoss.stage)}.</div>` : ''}
+      </div>
+
+      <!-- SEGMENTS + PAGE ENGAGEMENT -->
+      <div class="fp-grid-2 fp-mb-20">
+        <div class="fp-card">
+          <div class="fp-card-title" style="margin-bottom:12px">↪ ${fpT('Parcours les plus fréquents')}</div>
+          ${journeys.length ? `<div style="display:flex;flex-direction:column;gap:8px">${journeys.map(j=>`
+            <div style="display:flex;align-items:center;gap:8px;font-size:11px">
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(j.from)}</span>
+              <span style="color:var(--fp-text-faint)">→</span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(j.to)}</span>
+              <strong style="white-space:nowrap">${j.sessions} ${fpT('sessions')}</strong>
+            </div>`).join('')}</div>` : `<div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Les transitions apparaîtront après la collecte de plusieurs pages vues dans une session.')}</div>`}
+          <div style="margin-top:12px;font-size:10px;color:var(--fp-text-faint)">${fpT('Pages d’entrée')}: ${(behavioralAnalysis?.entryPages||[]).slice(0,4).map(p=>`${escHtml(p.page)} (${p.sessions})`).join(' · ')||_NA}<br>${fpT('Pages de sortie')}: ${(behavioralAnalysis?.exitPages||[]).slice(0,4).map(p=>`${escHtml(p.page)} (${p.sessions})`).join(' · ')||_NA}</div>
         </div>
+        <div class="fp-card">
+          <div class="fp-card-title" style="margin-bottom:12px">⚠ ${fpT('Frottements observés')}</div>
+          ${friction.length ? `<div style="display:flex;flex-direction:column;gap:8px">${friction.map(f=>`
+            <div style="padding:9px 11px;border-radius:8px;background:rgba(239,68,68,.06);font-size:11px">
+              <strong>${escHtml(f.page)}</strong><div style="color:var(--fp-text-muted);margin-top:3px">${f.evidence.map(escHtml).join(' · ')}</div>
+            </div>`).join('')}</div>` : `<div style="font-size:11px;color:var(--fp-text-faint)">${fpT('Aucun clic de friction ni abandon de formulaire observé sur la période.')}</div>`}
+          <div style="margin-top:10px;font-size:10px;color:var(--fp-text-faint)">${fpT('Non mesuré avec les événements actuels')}: ${(behavioralAnalysis?.unavailable||[]).map(escHtml).join(', ')}</div>
+        </div>
+      </div>
+
+      <div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:8px">◎ ${fpT('Créer et analyser un funnel comportemental')}</div>
+        <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:10px">${fpT('Saisissez 2 à 6 événements dans l’ordre. Facultatif : ajoutez :/chemin pour limiter une étape à une page.')}</div>
+        <form onsubmit="return window.FP_BEHAVIORAL_API.runFunnel(event)" style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="fp-behavior-funnel-steps" class="fp-input" style="flex:1;min-width:240px" value="page_view, form_submit" placeholder="page_view:/pricing, click, form_submit:/contact">
+          <button class="fp-btn fp-btn-primary fp-btn-sm" type="submit">${fpT('Analyser')}</button>
+        </form>
+        ${behavioralFunnel ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:14px">${behavioralFunnel.steps.map((s,i)=>`
+          <div style="padding:10px 12px;border:1px solid var(--fp-border);border-radius:8px">
+            <div style="font-size:10px;color:var(--fp-text-muted)">${i+1}. ${escHtml(s.label)}</div>
+            <div style="font-size:18px;font-weight:800;color:var(--fp-text)">${s.sessions.toLocaleString(getLocale())}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint)">${s.rateFromPrevious==null?_NA:`${s.rateFromPrevious}% ${fpT('depuis l’étape précédente')}`}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${fpT('Période précédente')}: ${(s.previousSessions==null?_NA:Number(s.previousSessions).toLocaleString(getLocale()))} · ${s.changePercent==null?_NA:`${s.changePercent>0?'+':''}${s.changePercent}%`}</div>
+            ${s.abandonments==null?'':`<div style="font-size:10px;color:#ef4444">${s.abandonments} ${fpT('abandons')}</div>`}
+          </div>`).join('')}</div>` : ''}
+        ${behavioralFunnel?.dataLimited ? `<div style="margin-top:8px;font-size:10px;color:#f59e0b">${fpT('Résultat limité aux événements les plus récents (plafond de sécurité atteint).')}</div>` : ''}
       </div>
 
       <!-- SEGMENTS + PAGE ENGAGEMENT -->
@@ -59194,7 +60713,7 @@ function renderDataExplorer() {
                   <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(seg.name)}</span>
                   <div style="display:flex;gap:8px">
                     <span style="font-size:11px;font-weight:700;color:${seg.color}">${seg.pct}%</span>
-                    <span style="font-size:11px;font-weight:700;color:${seg.conv>=2?'#22c55e':seg.conv>=0.5?'#f59e0b':'#ef4444'}">conv. ${seg.conv}%</span>
+                    <span style="font-size:11px;font-weight:700;color:${seg.conv==null?'var(--fp-text-faint)':seg.conv>=2?'#22c55e':seg.conv>=0.5?'#f59e0b':'#ef4444'}">${fpT('formulaires')} ${seg.conv==null?_NA:`${seg.conv}%`}</span>
                   </div>
                 </div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(seg.desc)}</div>
@@ -59210,19 +60729,20 @@ function renderDataExplorer() {
           <table class="fp-data-table">
             <thead><tr>
               <th>Page</th>
-              <th style="text-align:center">Eng.</th>
+              <th style="text-align:center">${fpT('Clics')}</th>
               <th style="text-align:center">Scroll</th>
               <th style="text-align:center">Durée</th>
               <th style="text-align:center">Abandon</th>
             </tr></thead>
             <tbody>
               ${pageEngage.map(p => `<tr>
-                <td style="font-weight:600">${p.page}</td>
-                <td style="text-align:center;color:${p.eng>=70?'#22c55e':p.eng>=50?'#f59e0b':'#ef4444'};font-weight:700">${p.eng}%</td>
-                <td style="text-align:center;color:var(--fp-text-muted)">${p.scroll}%</td>
-                <td style="text-align:center;font-family:monospace;font-size:11px">${p.time}</td>
-                <td style="text-align:center;color:${p.abandon>=60?'#ef4444':p.abandon>=40?'#f59e0b':'#22c55e'};font-weight:700">${p.abandon}%</td>
+                <td style="font-weight:600">${escHtml(p.page)}<div style="font-size:9px;color:var(--fp-text-faint)">${p.sessions} ${fpT('sessions')}</div></td>
+                <td style="text-align:center;color:var(--fp-text-muted)">${p.clicks.toLocaleString(getLocale())}</td>
+                <td style="text-align:center;color:var(--fp-text-muted)">${p.scroll==null?_NA:`${p.scroll}%`}</td>
+                <td style="text-align:center;font-family:monospace;font-size:11px">${p.time==null?_NA:`${p.time}s`}</td>
+                <td style="text-align:center;color:${p.abandon==null?'var(--fp-text-muted)':p.abandon>=60?'#ef4444':p.abandon>=40?'#f59e0b':'#22c55e'};font-weight:700">${p.abandon==null?_NA:`${p.abandon}%`}</td>
               </tr>`).join('')}
+              ${pageEngage.length===0?`<tr><td colspan="5" style="text-align:center;color:var(--fp-text-faint);padding:18px">${fpT('Aucune donnée de page disponible')}</td></tr>`:''}
             </tbody>
           </table>
         </div>
@@ -59471,13 +60991,21 @@ function renderDataExplorer() {
     const _hasForecast = !!(_fcData?.available && _realistic.length);
     const fMonths = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => new Date(p.date).toLocaleDateString(getLocale(),{month:'short'})) : [];
     const fTraffic = _hasForecast ? _realistic.filter((_, i) => i % Math.max(1, Math.floor(_realistic.length / 6)) === 0).slice(0, 6).map(p => Math.round(Number(p.predictedTraffic ?? p.predictedValue ?? 0))) : [];
-    const fConv = [];
-    const fRev = [];
+    // Conversions / revenu : mesures GA4 uniquement. Le serveur renvoie null + flag false sans GA4 : on affiche « Indisponible », jamais 0.
+    const _convOk = _fcData?.conversionsAvailable === true && _fcData?.summary?.expectedConversionsIn30d != null;
+    const _revOk  = _fcData?.revenueAvailable === true && _fcData?.summary?.expectedRevenueIn90d != null;
+    const _fcUnavail = fpT('Indisponible');
+    const _scenarioMetric = function(name, key, ok) {
+      if (!ok) return _fcUnavail;
+      const rows = _points.filter(p => p.scenario === name).slice(0, key === 'predictedRevenue' ? 90 : 30);
+      if (!rows.length || rows.some(p => p[key] == null)) return _fcUnavail;
+      return rows.reduce((sum, p) => sum + Number(p[key]), 0).toLocaleString(getLocale());
+    };
     const maxF = fTraffic.length ? Math.max(...fTraffic, 1) : 1;
     const scenarios = _hasForecast ? [
-      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#64748b', desc: 'Projection GSC basse' },
-      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#2563EB', desc: 'Tendance GSC observée' },
-      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: '—', rev: '—', color: '#22c55e', desc: 'Projection GSC haute' },
+      { name: 'Scénario prudent', traffic: _scenarioValue('pessimistic').toLocaleString(getLocale()) + ' clics', conv: _scenarioMetric('pessimistic','predictedConversions',_convOk), rev: _scenarioMetric('pessimistic','predictedRevenue',_revOk), color: '#64748b', desc: 'Projection GSC basse' },
+      { name: 'Scénario réaliste', traffic: _scenarioValue('realistic').toLocaleString(getLocale()) + ' clics', conv: _scenarioMetric('realistic','predictedConversions',_convOk), rev: _scenarioMetric('realistic','predictedRevenue',_revOk), color: '#2563EB', desc: 'Tendance GSC observée' },
+      { name: 'Scénario ambitieux', traffic: _scenarioValue('optimistic').toLocaleString(getLocale()) + ' clics', conv: _scenarioMetric('optimistic','predictedConversions',_convOk), rev: _scenarioMetric('optimistic','predictedRevenue',_revOk), color: '#22c55e', desc: 'Projection GSC haute' },
     ] : [];
     return `
       ${isUltra && _hasForecast
@@ -59493,8 +61021,8 @@ function renderDataExplorer() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Trafic projeté', _hasForecast ? _scenarioValue('realistic').toLocaleString(getLocale()) : '—', _hasForecast ? '90 jours · source GSC' : 'Données insuffisantes', 'neutral')}
-        ${statCard('Conversion', '—', 'Données GA4 requises', 'neutral')}
-        ${statCard('Revenu', '—', 'Données de revenu requises', 'neutral')}
+        ${statCard('Conversion', _convOk ? Number(_fcData.summary.expectedConversionsIn30d).toLocaleString(getLocale()) : _fcUnavail, _convOk ? '30 jours · GA4' : 'Données GA4 requises', 'neutral')}
+        ${statCard('Revenu', _revOk ? Number(_fcData.summary.expectedRevenueIn90d).toLocaleString(getLocale()) + ' €' : _fcUnavail, _revOk ? '90 jours · GA4' : 'Données de revenu requises', 'neutral')}
         ${statCard('Confiance', _hasForecast ? (_fcData.summary?.confidenceScore ?? '—') + '%' : '—', _hasForecast ? 'historique GSC' : 'Données insuffisantes', 'neutral')}
       </div>
 
@@ -59519,12 +61047,10 @@ function renderDataExplorer() {
           `).join('')}
         </div>
         <div style="display:flex;gap:12px;padding:10px;background:rgba(37,99,235,0.06);border-radius:8px">
-          ${[{label:'Conv. prévue',vals:fConv,unit:'%'},{label:'Revenue prévu',vals:fRev,unit:'€'}].map(f => `
+          ${[{label:'Conv. prévue',ok:_convOk,val:_convOk?Number(_fcData.summary.expectedConversionsIn30d).toLocaleString(getLocale()):''},{label:'Revenue prévu',ok:_revOk,val:_revOk?Number(_fcData.summary.expectedRevenueIn90d).toLocaleString(getLocale())+' €':''}].map(f => `
             <div style="flex:1">
               <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:4px">${f.label}</div>
-              <div style="display:flex;gap:4px">
-                ${f.vals.map((v, i) => `<div style="flex:1;text-align:center;font-size:9px;color:${i===f.vals.length-1?'#22c55e':'var(--fp-text-faint)'};font-weight:${i===f.vals.length-1?700:400}">${v}${f.unit}</div>`).join('')}
-              </div>
+              <div data-fc-metric="${f.ok ? 'value' : 'unavailable'}" style="font-size:11px;font-weight:700;color:${f.ok?'#22c55e':'var(--fp-text-faint)'}">${f.ok ? f.val : _fcUnavail}</div>
             </div>
           `).join('')}
         </div>
@@ -65652,6 +67178,26 @@ window.fpOpenSEOChangeImpact = function () {
 window.fpOpenConversionOpportunityEngine = function () {
   window.navigate('conversion-opportunity-engine');
 };
+
+// [lot2:agencyPortfolioPriorities]
+window.fpOpenAgencyPortfolioPriorities = function () {
+  window.navigate('agency-portfolio-priorities');
+};
+
+// [lot2:localLandingOpportunities]
+window.fpOpenLocalLandingOpportunities = function () {
+  window.navigate('local-landing-opportunities');
+};
+
+// [lot2:localPresenceOptimizer]
+window.fpOpenLocalPresenceOptimizer = function () {
+  window.navigate('local-presence-optimizer');
+};
+
+// [lot2:gbpPerformanceLeads]
+window.fpOpenGbpPerformanceLeads = function () {
+  window.navigate('gbp-performance-leads');
+};
 window.navigateSub = navigateSub;
 window.apiAction   = apiAction;
 
@@ -69506,23 +71052,122 @@ window.FP_KEYWORDS_API = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 window.FP_BEHAVIORAL_API = {
-  async load(siteUrl) {
+  async load(siteUrl, periodDays = 30) {
+    siteUrl = siteUrl || window.STATE?.siteUrl || '';
+    if (window.STATE) {
+      window.STATE.behavioral = {
+        ...window.STATE.behavioral,
+        loading: Boolean(siteUrl),
+        error: siteUrl ? null : fpT('Sélectionnez un site enregistré pour isoler les données Behavioral AI.'),
+      };
+    }
+    if (!siteUrl) return;
     try {
-      const url = siteUrl ? `/api/behavioral/insights?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/behavioral/insights';
-      const data = await apiFetch(url).catch(() => null);
-      if (!data) return;
+      const params = new URLSearchParams({ periodDays: String(periodDays) });
+      if (siteUrl) params.set('siteUrl', siteUrl);
+      const url = `/api/behavioral/insights?${params.toString()}`;
+      const data = await apiFetch(url);
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.behavioral = {
         sessionStats:  data.sessionStats  || data.stats  || null,
+        analysis:      data.analysis      || null,
         insights:      data.insights      || [],
-        sessions:      data.sessions      || [],
-        totalSessions: data.totalSessions || data.sessionCount || 0,
-        avgEngagement: data.avgEngagement || 0,
-        topPages:      data.topPages      || [],
+        sessions:      [],
+        totalSessions: data.analysis?.sessionsWithPageView || 0,
+        avgEngagement: null,
+        topPages:      data.analysis?.pageStats || [],
       };
+      if (window.STATE) {
+        const a = data.analysis;
+        if (!a) {
+          window.STATE.behavioral = {
+            ...window.STATE.behavioral, analysis: null, loading: false, error: null, userFlowSteps: [],
+            segments: [], pageEngage: [],
+          };
+        } else {
+        const totalSessions = a.sessionsWithPageView || 0;
+        window.STATE.behavioral = {
+          ...window.STATE.behavioral,
+          loading: false,
+          error: null,
+          analysis: a,
+          periodDays: a.periodDays,
+          userFlowSteps: a.funnel.map((step, i) => ({
+            stage: step.step,
+            users: step.sessions,
+            drop: i === 0 || !a.funnel[i - 1]?.sessions ? null :
+              Math.round((1 - step.sessions / a.funnel[i - 1].sessions) * 1000) / 10,
+          })),
+          segments: a.deviceSegments.map(segment => ({
+            name: segment.device === 'unknown' ? fpT('Appareil inconnu') : fpT(segment.device),
+            pct: totalSessions ? Math.round(segment.sessions / totalSessions * 100) : 0,
+            conv: segment.formSubmitRate,
+            eng: totalSessions ? Math.round(segment.sessions / totalSessions * 100) : 0,
+            color: segment.device === 'mobile' ? '#8b5cf6' : segment.device === 'desktop' ? '#2563EB' : '#64748b',
+            desc: `${segment.sessions} ${fpT('sessions observées')}`,
+          })),
+          pageEngage: a.pageStats.map(page => ({
+            page: page.page,
+            clicks: page.clicks,
+            scroll: page.avgScrollDepth,
+            time: page.avgTimeOnPageSeconds,
+            abandon: page.formSubmits + page.formAbandons > 0
+              ? Math.round(page.formAbandons / (page.formSubmits + page.formAbandons) * 100)
+              : null,
+            sessions: page.sessions,
+          })),
+        };
+        }
+      }
       // Also load snippet status (non-blocking)
       this.loadStatus(siteUrl).catch(() => {});
-    } catch(e) { console.warn('[FP_BEHAVIORAL_API] load error:', e); }
+    } catch(e) {
+      if (window.STATE) window.STATE.behavioral = { ...window.STATE.behavioral, loading: false, error: String(e) };
+      console.warn('[FP_BEHAVIORAL_API] load error:', e);
+    }
+  },
+
+  async setPeriod(periodDays) {
+    const days = Number(periodDays);
+    if (![7, 30, 90].includes(days)) return;
+    const pending = this.load(window.STATE?.siteUrl || '', days);
+    render();
+    await pending;
+    render();
+  },
+
+  async runFunnel(event) {
+    event.preventDefault();
+    const raw = document.getElementById('fp-behavior-funnel-steps')?.value || '';
+    const tokens = raw.split(',').map(value => value.trim()).filter(Boolean);
+    if (tokens.length < 2 || tokens.length > 6) {
+      showToast('error', fpT('Un funnel doit contenir de 2 à 6 étapes.'));
+      return false;
+    }
+    const steps = tokens.map(token => {
+      const separator = token.indexOf(':');
+      const eventType = (separator < 0 ? token : token.slice(0, separator)).trim();
+      const page = separator < 0 ? '' : token.slice(separator + 1).trim();
+      return { eventType, label: page ? `${eventType} · ${page}` : eventType, ...(page ? { page } : {}) };
+    });
+    const siteUrl = window.STATE?.siteUrl || '';
+    if (!siteUrl) {
+      showToast('error', fpT('Sélectionnez un site avant d’analyser un funnel.'));
+      return false;
+    }
+    try {
+      const result = await apiFetch('/api/behavioral/funnels/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ siteUrl, periodDays: window.STATE?.behavioral?.periodDays || 30, steps }),
+      });
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.behavioral = window.FP_DATA.behavioral || {};
+      window.FP_DATA.behavioral.customFunnel = result;
+      render();
+    } catch (error) {
+      showToast('error', String(error));
+    }
+    return false;
   },
 
   async loadStatus(siteUrl) {
@@ -69551,9 +71196,20 @@ window.FP_BEHAVIORAL_API = {
     if (!siteUrl) { showToast('error', fpT('siteUrl requis')); return; }
     showToast('info', fpT('Génération des insights comportementaux…'));
     try {
-      const r = await apiFetch('/api/behavioral/generate-insights', { method: 'POST', body: JSON.stringify({ siteUrl }) });
-      if (r?.ok) { await this.load(siteUrl); render(); showToast('success', fpT('Insights comportementaux générés')); }
-      else showToast('error', r?.error || 'Erreur');
+      const r = await apiFetch('/api/behavioral/generate-insights', {
+        method: 'POST',
+        body: JSON.stringify({ siteUrl, periodDays: window.STATE?.behavioral?.periodDays || 7 }),
+      });
+      if (r?.ok) {
+        await this.load(siteUrl);
+        render();
+        showToast(r.aiGenerated ? 'success' : 'info', r.aiGenerated
+          ? fpT('Insights IA générés à partir des événements observés')
+          : r.count > 0
+            ? fpT('Signaux mesurés générés ; recommandations IA indisponibles')
+            : fpT('Aucun signal ne dépasse actuellement les seuils de détection.'));
+      }
+      else showToast('error', r?.error || fpT('Erreur'));
     } catch(e) { showToast('error', String(e)); }
   },
 };
@@ -69566,16 +71222,22 @@ window.FP_CRO_API = {
   async load(siteUrl) {
     try {
       const url = siteUrl ? `/api/cro?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/cro';
-      const data = await apiFetch(url).catch(() => null);
-      if (!data) return;
+      const data = await apiFetch(url);
+      if (!data || data.ok === false) throw new Error(data?.error || fpT('Données CRO indisponibles'));
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.cro = {
         recommendations: data.recommendations || [],
         scores:          data.scores          || [],
         experiments:     data.experiments     || [],
         avgCroScore:     data.avgCroScore     || null,
+        error: null,
       };
-    } catch(e) { console.warn('[FP_CRO_API] load error:', e); }
+      if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
+    } catch(e) {
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.cro = { ...(window.FP_DATA.cro || {}), error: e?.message || fpT('Données CRO indisponibles') };
+      console.warn('[FP_CRO_API] load error:', e);
+    }
   },
 
   async generate(siteUrl) {
@@ -69585,21 +71247,23 @@ window.FP_CRO_API = {
       const r = await apiFetch('/api/cro/generate', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.cro = { recommendations: r.recommendations || [], scores: r.scores || [], experiments: r.experiments || [] };
+        window.FP_DATA.cro = { recommendations: r.recommendations || [], scores: [], experiments: window.FP_DATA.cro?.experiments || [], pageAnalysis: r.pageAnalysis || null, error:null };
+        if (typeof STATE !== 'undefined') STATE.cro = window.FP_DATA.cro;
         render();
-        showToast('success', `${(r.recommendations||[]).length} recommandations CRO générées`);
-      } else showToast('error', r?.error || 'Erreur');
+        showToast('success', fpT('{count} observations CRO analysées', { count:(r.observations || []).length }));
+      } else showToast('error', r?.error || fpT('Erreur'));
     } catch(e) { showToast('error', String(e)); }
   },
 
   async updateStatus(recId, status) {
     try {
-      await apiFetch(`/api/cro/recommendations/${encodeURIComponent(recId)}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      const result = await apiFetch(`/api/cro/recommendations/${encodeURIComponent(recId)}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      if (result?.ok !== true || result?.recommendation?.status !== status) throw new Error(result?.error || fpT('Statut non enregistré'));
       if (window.FP_DATA?.cro?.recommendations) {
         const rec = window.FP_DATA.cro.recommendations.find(r => r.id === recId);
         if (rec) { rec.status = status; render(); }
       }
-    } catch(e) { showToast('error', String(e)); }
+    } catch(e) { showToast('error', String(e)); render(); }
   },
 };
 
@@ -69611,18 +71275,32 @@ window.FP_REVENUE_LEAK_API = {
   async load(siteUrl) {
     try {
       const url = siteUrl ? `/api/revenue-leak?siteUrl=${encodeURIComponent(siteUrl)}` : '/api/revenue-leak';
-      const data = await apiFetch(url).catch(() => null);
-      if (!data) return;
+      const data = await apiFetch(url);
+      if (!data || data.ok === false) throw new Error(fpT('Les événements comportementaux sont indisponibles.'));
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.revenueLeak = {
-        leaks:          data.leaks         || [],
+        _fromRealData: true,
+        leaks:          data.opportunities || [],
+        opportunities:  data.opportunities || [],
         summary:        data.summary       || null,
-        trafficLosses:  data.trafficLosses || data.failures || [],
-        conversionFails:data.conversionFailures || [],
-        isEmpty:        data.isEmpty       ?? (!(data.leaks && data.leaks.length)),
-        emptyReason:    data.emptyReason   || null,
+        financial:      data.financial || { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+        attribution:    data.attribution || { status: 'insufficient_data', reason: 'no_shared_identifier' },
+        windowDays:     data.windowDays || 30,
+        isEmpty:        data.noData        ?? (!(data.opportunities && data.opportunities.length)),
+        noData:         data.noData        ?? (!(data.opportunities && data.opportunities.length)),
+        emptyReason:    data.error         || null,
+        error:          data.error         || null,
       };
-    } catch(e) { console.warn('[FP_REVENUE_LEAK_API] load error:', e); }
+    } catch(e) {
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.revenueLeak = {
+        _fromRealData: true, leaks: [], opportunities: [], summary: null,
+        financial: { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+        attribution: { status: 'insufficient_data', reason: 'no_shared_identifier' },
+        noData: true, error: fpT('Les événements comportementaux sont temporairement indisponibles.'),
+      };
+      console.warn('[FP_REVENUE_LEAK_API] load error:', e);
+    }
   },
 
   async detect(siteUrl) {
@@ -69632,22 +71310,38 @@ window.FP_REVENUE_LEAK_API = {
       const r = await apiFetch('/api/revenue-leak/detect', { method: 'POST', body: JSON.stringify({ siteUrl }) });
       if (r?.ok) {
         window.FP_DATA = window.FP_DATA || {};
-        window.FP_DATA.revenueLeak = { leaks: r.leaks || [], summary: r.summary || null, trafficLosses: r.trafficLosses || [] };
+        window.FP_DATA.revenueLeak = {
+          _fromRealData: true, leaks: r.opportunities || [], opportunities: r.opportunities || [],
+          financial: r.financial || { status: 'insufficient_data', observedLoss: null, estimatedLoss: null, currency: null },
+          attribution: r.attribution || { status: 'insufficient_data', reason: 'no_shared_identifier' },
+          noData: r.noData ?? !(r.opportunities || []).length, error: r.error || null,
+        };
         render();
-        showToast('success', `${(r.leaks||[]).length} fuites de conversion détectées`);
-      } else showToast('error', r?.error || 'Erreur');
+        showToast('success', fpT('{count} opportunités observées', { count:(r.opportunities || []).length }));
+      } else showToast('error', r?.error || fpT('Erreur'));
     } catch(e) { showToast('error', String(e)); }
   },
 
-  async resolve(leakId) {
+  async resolve(leakId, button) {
+    if (!leakId) return;
+    if (button) button.disabled = true;
     try {
-      await apiFetch(`/api/revenue-leak/${encodeURIComponent(leakId)}/resolve`, { method: 'PATCH' });
-      if (window.FP_DATA?.revenueLeak?.leaks) {
-        window.FP_DATA.revenueLeak.leaks = window.FP_DATA.revenueLeak.leaks.filter(l => l.id !== leakId);
-        render();
-        showToast('success', fpT('Fuite marquée comme résolue'));
+      const result = await apiFetch(`/api/revenue-leak/${encodeURIComponent(leakId)}/resolve`, { method: 'PATCH' });
+      if (!result?.ok) throw new Error(result?.error || fpT('Erreur'));
+      const data = window.FP_DATA?.revenueLeak;
+      if (data) {
+        const remaining = (data.opportunities || data.leaks || []).filter(l => l.id !== leakId);
+        data.opportunities = remaining;
+        data.leaks = remaining;
+        data.noData = remaining.length === 0;
+        data.isEmpty = remaining.length === 0;
       }
-    } catch(e) { showToast('error', String(e)); }
+      render();
+      showToast('success', fpT('Fuite marquée comme résolue'));
+    } catch(e) {
+      if (button) button.disabled = false;
+      showToast('error', String(e));
+    }
   },
 };
 
@@ -70018,25 +71712,46 @@ window.fpTrackUsage = async function(kind) {
 window.FP_CRM_API = {
   async load() {
     try {
-      const [status, logs] = await Promise.allSettled([
+      // Retour du fournisseur apres l'autorisation OAuth (resultat uniquement, jamais de secret dans l'URL).
+      try {
+        const q = new URLSearchParams(window.location.search);
+        if (q.has('crm_connected') || q.has('crm_error')) {
+          const ok = q.has('crm_connected');
+          q.delete('crm_connected'); q.delete('crm_error'); q.delete('crm_provider');
+          const rest = q.toString();
+          window.history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
+          setTimeout(() => { if (typeof showToast === 'function') showToast(ok ? 'success' : 'error', fpT(ok ? 'CRM connecté !' : 'La connexion au CRM a échoué ou a été refusée.')); }, 500);
+        }
+      } catch (_) { /* affichage seulement */ }
+      const [status, logs, providers] = await Promise.allSettled([
         apiFetch('/api/crm/status').catch(()=>null),
         apiFetch('/api/crm/logs?limit=20').catch(()=>null),
+        apiFetch('/api/crm/providers').catch(()=>null),
       ]);
       window.FP_DATA = window.FP_DATA || {};
       window.FP_DATA.crm = {
         status: status.status==='fulfilled' ? status.value : {},
         logs:   logs.status==='fulfilled' ? (logs.value?.logs||[]) : [],
+        // Source de verite : GET /api/crm/providers (champ `implemented`). null = liste indisponible => tout est desactive.
+        providers: providers.status==='fulfilled' && Array.isArray(providers.value?.providers) ? providers.value.providers : null,
         loadedAt: Date.now(),
       };
     } catch(e) { console.warn('[FP_CRM_API]', e); }
   },
+  // Un fournisseur est connectable/synchronisable uniquement si le serveur le declare `implemented`.
+  isImplemented(provider) {
+    const list = window.FP_DATA?.crm?.providers;
+    return Array.isArray(list) && list.some((p) => p && p.id === provider && p.implemented === true);
+  },
   async connect(provider, data) {
+    if (!this.isImplemented(provider)) throw new Error('CRM_PROVIDER_NOT_IMPLEMENTED');
     return await apiFetch(`/api/crm/connect/${provider}`, { method:'POST', body: JSON.stringify(data) });
   },
   async disconnect(provider) {
     return await apiFetch(`/api/crm/disconnect/${provider}`, { method:'POST', body: JSON.stringify({}) });
   },
   async sync(provider, entityType) {
+    if (!this.isImplemented(provider)) throw new Error('CRM_PROVIDER_NOT_IMPLEMENTED');
     return await apiFetch('/api/crm/sync', { method:'POST', body: JSON.stringify({ provider, entityType }) });
   },
 };
@@ -70153,7 +71868,9 @@ function renderCRM() {
     { id:'close',      name:'Close CRM',   icon:'🔑', color:'#7b68ee', desc:'CRM conçu pour les équipes sales. Calling intégré.' },
   ];
 
-  const syncEntities = ['contacts','leads','deals','companies'];
+  // Le serveur ne synchronise que les contacts (autres entites => refus).
+  const syncEntities = ['contacts'];
+  const crmImpl = (id) => window.FP_CRM_API?.isImplemented(id) === true;
 
   return `
     <div class="fp-section-header">
@@ -70210,7 +71927,9 @@ function renderCRM() {
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:var(--fp-danger)" onclick="window.FP_CRM_API?.disconnect('${p.id}').then(()=>{window.FP_CRM_API.load();render(STATE.currentSection)})">✕</button>
                 </div>
               ` : `
-                <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:11px" onclick="window._connectCrm('${p.id}','${p.name}','${p.icon}')">+ Connecter</button>
+                ${crmImpl(p.id)
+                  ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:11px" onclick="window._connectCrm('${p.id}','${p.name}','${p.icon}')">+ Connecter</button>`
+                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-crm-soon="${p.id}" disabled aria-disabled="true" style="width:100%;font-size:11px;opacity:0.6;cursor:not-allowed" title="${escHtml(fpT(crmData.providers ? 'Cette intégration CRM n’est pas encore disponible.' : 'La liste des CRM disponibles est momentanément indisponible.'))}">${escHtml(fpT(crmData.providers ? 'Bientôt disponible' : 'Indisponible pour le moment'))}</button>`}
               `}
             </div>
           `;
@@ -70291,16 +72010,8 @@ function renderCRM() {
       <div class="fp-card" style="width:440px;max-width:92vw;padding:24px">
         <div id="fp-crm-modal-title" style="font-size:16px;font-weight:700;margin-bottom:16px">Connecter un CRM</div>
         <div style="display:flex;flex-direction:column;gap:12px">
-          <div>
-            <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Access Token OAuth</label>
-            <input id="crm-token" class="fp-input" placeholder="eyJ..." type="password"/>
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Portal ID (optionnel)</label>
-            <input id="crm-portal" class="fp-input" placeholder="12345678"/>
-          </div>
-          <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-            ℹ️ En production, le flux OAuth redirige vers votre CRM pour autorisation sécurisée.
+          <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">
+            ${fpT('Vous allez être redirigé vers votre CRM pour autoriser Flowpoint en lecture seule. Aucun jeton n’est à copier : il est échangé et chiffré côté serveur.')}
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
@@ -70313,28 +72024,22 @@ function renderCRM() {
     window._crmTab = window._crmTab || 'overview';
     window._currentCrmProvider = null;
     window._connectCrm = function(id, name, icon) {
+      if (!window.FP_CRM_API || !window.FP_CRM_API.isImplemented(id)) return; // jamais d'appel vers un CRM non implemente (501)
       window._currentCrmProvider = id;
       document.getElementById('fp-crm-modal-title').textContent = icon + ' Connecter ' + name;
       document.getElementById('fp-crm-modal').style.display = 'flex';
     };
     window._submitCrmConnect = async function() {
-      const token = document.getElementById('crm-token').value.trim();
-      const portal = document.getElementById('crm-portal').value.trim();
-      if (!token) { showToast('error', fpT('Access token requis')); return; }
-      showToast('info', fpT('Connexion en cours…'));
+      showToast('info', fpT('Redirection vers le CRM…'));
       try {
-        const r = await window.FP_CRM_API.connect(window._currentCrmProvider, { accessToken: token, portalId: portal || undefined });
-        if (r?.ok) {
-          document.getElementById('fp-crm-modal').style.display = 'none';
-          showToast('success', fpT('CRM connecté !'));
-          await window.FP_CRM_API.load();
-          render(STATE.currentSection);
-        } else {
-          const msg = r?.error || 'Erreur de connexion';
-          if (msg.includes('Limite')) showToast('error', fpT('Limite du plan atteinte. Passez à un plan supérieur.'));
-          else showToast('error', msg);
-        }
-      } catch(e) { showToast('error', String(e)); }
+        const r = await window.FP_CRM_API.connect(window._currentCrmProvider, {});
+        if (r?.ok && typeof r.url === 'string' && /^https:\/\//.test(r.url)) { window.location.assign(r.url); return; }
+        showToast('error', r?.error || fpT('Connexion impossible pour le moment.'));
+      } catch(e) {
+        const msg = String(e?.message || e);
+        if (/limite|limit/i.test(msg)) showToast('error', fpT('Limite du plan atteinte. Passez à un plan supérieur.'));
+        else showToast('error', fpT('Connexion impossible pour le moment.'));
+      }
     };
     </script>
   `;

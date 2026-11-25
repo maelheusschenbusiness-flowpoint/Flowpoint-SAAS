@@ -187,7 +187,7 @@ describe("billing quote — inclusions", () => {
 import { COMING_SOON_ADDONS, REMOVED_ADDONS, PLAN_ALLOWED_ADDONS } from "../lib/plans.js";
 
 describe("billing quote — addon lifecycle guards (P0)", () => {
-  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS].slice(0, 4); // gbpSlots10, reviewIntelligence, localDominationMaps, zapierIntegration, ...
+  const COMING_SOON_KEYS = [...COMING_SOON_ADDONS].slice(0, 4); // slaMonitoring, crmIntegration, ssoEnterprise, ... (aiWorkspaceLaunch retire)
 
   it("blocks every coming_soon addon on all checkout paths", () => {
     for (const key of COMING_SOON_KEYS) {
@@ -204,7 +204,8 @@ describe("billing quote — addon lifecycle guards (P0)", () => {
   });
 
   it("blocks slaMonitoring, crmIntegration, ssoEnterprise explicitly", () => {
-    for (const key of ["slaMonitoring", "crmIntegration", "ssoEnterprise"]) {
+    // [CERT ONLY] crmIntegration debloque
+    for (const key of ["slaMonitoring", "ssoEnterprise"]) {
       expect(
         () => createBillingQuote({ plan: "ultra", addons: { [key]: true } }),
       ).toThrow("ADDON_COMING_SOON");

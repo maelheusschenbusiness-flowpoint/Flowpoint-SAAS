@@ -1,14 +1,26 @@
 import { Pool } from "pg";
+import { optionsSslPostgres } from "./ssl-supabase.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
-  pgTable, text, integer, boolean, timestamp, real, bigint, jsonb,
+  pgTable, text, integer, boolean, timestamp, real, bigint, jsonb, primaryKey,
 } from "drizzle-orm/pg-core";
 
 // ── Connection ────────────────────────────────────────────────────────────────
 
+// TLS : la racine Supabase est ajoutee au magasin (verification ACTIVE). Voir ssl-supabase.ts.
+const sslPostgres = optionsSslPostgres();
+
+// Taille du pool : 20 par defaut (inchange en production). Le pooler Supabase en mode
+// session plafonne a 15 clients : l'environnement de test pose PG_POOL_MAX (ex. 6).
+const TAILLE_POOL = (() => {
+  const brut = Number.parseInt(process.env["PG_POOL_MAX"] ?? "", 10);
+  return Number.isFinite(brut) && brut >= 1 ? brut : 20;
+})();
+
 export const pool = new Pool({
   connectionString: process.env["DATABASE_URL"] ?? process.env["MONGO_URI"],
-  max: 20,
+  ...(sslPostgres === undefined ? {} : { ssl: sslPostgres }),
+  max: TAILLE_POOL,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
@@ -271,7 +283,7 @@ export const behaviorEventsTable = pgTable("behavior_events", {
 });
 
 export const behaviorSessionsTable = pgTable("behavior_sessions", {
-  id:              text("id").primaryKey(),
+  id:              text("id").notNull(),
   orgId:           text("org_id").notNull().default("default"),
   siteUrl:         text("site_url").notNull(),
   userAgent:       text("user_agent"),
@@ -284,7 +296,7 @@ export const behaviorSessionsTable = pgTable("behavior_sessions", {
   exitPage:        text("exit_page"),
   startedAt:       timestamp("started_at"),
   endedAt:         timestamp("ended_at"),
-});
+}, (t) => [primaryKey({ columns: [t.orgId, t.id] })]);
 
 export const behaviorInsightsTable = pgTable("behavior_insights", {
   id:             text("id").primaryKey(),
@@ -325,6 +337,7 @@ export const croRecommendationsTable = pgTable("cro_recommendations", {
   source:          text("source").default("rules"),
   metadata:        jsonb("metadata").default({}),
   createdAt:       timestamp("created_at").defaultNow(),
+  updatedAt:       timestamp("updated_at").defaultNow(),
 });
 
 export const croScoresTable = pgTable("cro_scores", {

@@ -1,17 +1,23 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { getStripeKey } from "./services/stripe-factory.js";
+import { attestResolvedPool, isCertTestService } from "./services/db-startup-attestation.js";
 import app from "./app.js";
 import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
 import { initAutomationTables } from "./services/init-automation.js";
 import { initMonitorsTables } from "./services/init-monitors.js";
 import { initDataTables } from "./services/init-data-tables.js";
+import { initMarketIntelTables } from "./services/init-market-intel-tables.js";
 import { initRlsSetup } from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { initPhase1Users } from "./services/init-phase1-users.js";
 import { initAgentTables } from "./services/init-agent-tables.js";
+import { initGbpPostingTables } from "./services/init-gbp-posting-tables.js";
+import { initCrmTables } from "./services/init-crm-tables.js";
+import { initBehavioralCroTables } from "./services/init-behavioral-cro-tables.js";
+import { loadBehavioralCorsAllowlist } from "./routes/behavioral.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
@@ -56,6 +62,19 @@ async function main() {
     }
     if (serverKey && browserKey && serverKey === browserKey) {
       logger.warn("[Maps] GOOGLE_MAPS_API_KEY and GOOGLE_MAPS_PUBLIC_KEY are identical — the server key must be a separate, non-referer-restricted credential");
+    }
+  }
+
+  // ── 0 bis. La base visee est-elle bien la base de TEST de ce service ? ─────
+  // Garde ajoutee pour la certification sur Flowpoint-Test : avant toute migration
+  // ou ecriture, l'identite de la base resolue est attestee (empreinte du projet).
+  // N'agit que sur le service `flowpoint-test` ; sans effet sur la production.
+  if (isCertTestService()) {
+    const attestation = await attestResolvedPool(pool);
+    process.stdout.write(`${JSON.stringify(attestation)}\n`);
+    if (attestation.status !== "PASS") {
+      logger.fatal("[Base] FATAL : la base resolue n'est pas celle du service de test. Arret avant toute migration.");
+      process.exit(1);
     }
   }
 
@@ -324,6 +343,28 @@ async function main() {
       .catch((err: unknown) => {
         logger.warn({ err }, "[startup] init-data-tables step failed (non-fatal)");
       });
+    await runCriticalStartupStep("init-market-intel-tables", initMarketIntelTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-market-intel-tables step failed (non-fatal)");
+      });
+    await runCriticalStartupStep("init-gbp-posting-tables", initGbpPostingTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-gbp-posting-tables step failed (non-fatal)");
+      });
+
+    // CRM Integrations : tables OAuth/contacts/webhooks (additif, idempotent)
+    await runCriticalStartupStep("init-crm-tables", initCrmTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-crm-tables step failed (non-fatal)");
+      });
+
+    // Behavioral AI / AI CRO / Revenue Leak : tables absentes de la production, puis
+    // allowlist CORS des sites enregistres (sinon vide apres chaque redemarrage).
+    await runCriticalStartupStep("init-behavioral-cro-tables", initBehavioralCroTables)
+      .then(() => loadBehavioralCorsAllowlist())
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] behavioral tables / CORS allowlist step failed (non-fatal)");
+      });
 
     // P0-5 : initAiMigration was previously only run on the full path.
     // Add it here so ai_recommendations / ai_workspace_profiles etc. are always present.
@@ -361,6 +402,17 @@ async function main() {
     // init-data-tables MUST run first: creates organizations, users, org_settings
     // and all core tables that init-missions/automation/monitors depend on.
     await runCriticalStartupStep("init-data-tables", initDataTables);
+    await runCriticalStartupStep("init-market-intel-tables", initMarketIntelTables);
+    await runCriticalStartupStep("init-gbp-posting-tables", initGbpPostingTables).catch(() => {});
+    await runCriticalStartupStep("init-crm-tables", initCrmTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-crm-tables step failed (non-fatal)");
+      });
+    await runCriticalStartupStep("init-behavioral-cro-tables", initBehavioralCroTables)
+      .then(() => loadBehavioralCorsAllowlist())
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] behavioral tables / CORS allowlist step failed (non-fatal)");
+      });
     await runCriticalStartupStep("init-missions",   initMissionsTables);
     await runCriticalStartupStep("init-automation", initAutomationTables);
     await runCriticalStartupStep("init-monitors",   initMonitorsTables);
@@ -418,6 +470,11 @@ async function main() {
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
+
+    // GBP Posting : publication des posts programmes echus (appel Google reel, jamais simule).
+    import("./services/gbp-posting-service.js")
+      .then(({ startGBPPostScheduler }) => startGBPPostScheduler())
+      .catch((err) => logger.warn({ err }, "[gbp-posting] scheduler not started"));
 
     // Durable recovery of AI usage writes that failed after provider consumption
     // (idempotent replays — survives restarts, unlike in-process timers).

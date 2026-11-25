@@ -13,6 +13,16 @@ export default defineConfig({
     // Run only files that are self-contained (pure functions / no live DB required)
     include: [
       "src/routes/billing-verify-plan-guard.test.ts",
+      // AI GBP Posting : tables, publication reelle (jamais simulee), isolation, generation.
+      "src/services/gbp-posting-tables-db.test.ts",
+      "src/routes/gbp-posts.test.ts",
+      "src/routes/gbp-posts-org-isolation.test.ts",
+      "src/routes/gbp-posts-lifecycle-postgres.test.ts",
+      "src/services/gbp-posting-generation.test.ts",
+      "src/services/gbp-posting-publish.test.ts",
+      "src/services/gbp-publish-honesty.test.ts",
+      // GBP : Business Information API, pagination, erreurs typees, mapping google_locations.
+      "src/services/google-service-gbp.test.ts",
       "src/tests/stripe-webhook-addon-checkout-guard.test.ts",
       // Conversion B — fp_lid attribution
       "src/tests/conversion-b-fp-lid.test.ts",
@@ -76,10 +86,39 @@ export default defineConfig({
       // Lot 1 add-ons : garde prix LIVE (add-on invisible et non achetable sans variable de prix)
       "src/lib/addon-price-gate.test.ts",
       "src/lib/addon-test-price-overrides.test.ts",
+      "src/lib/addon-market-intelligence-test-price.test.ts",
       // gsc_keyword_data creee hors du bloc v3 (absente de la production)
       "src/services/gsc-keyword-data-schema-db.test.ts",
+      // gsc_page_data creee hors du bloc v3 (absente de la production)
+      "src/services/gsc-page-data-schema-db.test.ts",
       // Local Domination Maps : local_opportunities / local_visibility_scores (absentes)
       "src/services/local-maps-tables-db.test.ts",
+      // Market Intelligence : ai_market_reports (absente) + generation de rapport
+      "src/services/market-intel-tables-db.test.ts",
+      "src/services/market-intel-service.test.ts",
+      "src/services/market-intel-window.test.ts",
+      "src/routes/market-intelligence-routes.test.ts",
+      // CRM Integrations : OAuth HubSpot chiffre, synchronisation, webhooks, tables CRM
+      "src/services/crm-tables-db.test.ts",
+      "src/services/crm/crm-hubspot.test.ts",
+      "src/services/crm-service.test.ts",
+      "src/routes/crm-readiness.test.ts",
+      // Behavioral AI / AI CRO / Revenue Leak : tables, ingestion par jeton de site, analyses
+      "src/routes/behavioral-chain-db.test.ts",
+      "src/tests/revenue-leak-attribution-ui.test.ts",
+      "src/tests/behavioral-dashboard-i18n.test.ts",
+      "src/routes/behavioral-snippet.test.ts",
+      "src/routes/cro-recommendation-state.test.ts",
+      "src/routes/revenue-leak-ga4.test.ts",
+      "src/routes/revenue-leak-ownership.test.ts",
+      "src/services/behavioral-service.test.ts",
+      "src/services/behavioral-session-id.test.ts",
+      "src/services/behavioral-session-auth.test.ts",
+      "src/routes/behavioral-access.test.ts",
+      "src/middlewares/plangate-addon-entitlement.test.ts",
+      "src/services/conversion-observations.test.ts",
+      "src/services/cro-service.test.ts",
+      "src/services/revenue-leak-attribution.test.ts",
       // [lot1:organicCampaignTracker]
       "src/routes/organic-campaign-tracker.test.ts",
       "src/services/organic-campaign-tracker.test.ts",
@@ -99,6 +138,29 @@ export default defineConfig({
       "src/routes/conversion-opportunity-engine.test.ts",
       "src/services/conversion-opportunity-engine.test.ts",
       "src/lib/addon-conversion-opportunity-engine-gate.test.ts",
+      // Lot 2 add-ons : garde prix
+      "src/lib/addon-price-gate-lot2.test.ts",
+      // [lot2:agencyPortfolioPriorities]
+      "src/routes/agency-portfolio-priorities.test.ts",
+      "src/services/agency-portfolio-priorities.test.ts",
+      "src/lib/addon-agency-portfolio-priorities-gate.test.ts",
+
+      // [lot2:localLandingOpportunities]
+      "src/routes/local-landing-opportunities.test.ts",
+      "src/services/local-landing-opportunities.test.ts",
+      "src/lib/addon-local-landing-opportunities-gate.test.ts",
+
+      // [lot2:localPresenceOptimizer]
+      "src/routes/local-presence-optimizer.test.ts",
+      "src/services/local-presence-optimizer.test.ts",
+      "src/lib/addon-local-presence-optimizer-gate.test.ts",
+
+      // [lot2:gbpPerformanceLeads]
+      "src/routes/gbp-performance.test.ts",
+      "src/routes/gbp-performance-postgres.test.ts",
+      "src/services/gbp-performance-addon.test.ts",
+      "src/services/gbp-performance-api.test.ts",
+      "src/lib/addon-gbp-performance-leads-gate.test.ts",
       "src/services/billing-quote.test.ts",
       "src/services/billing-schedule.test.ts",
       "src/routes/white-label.test.ts",
@@ -109,6 +171,9 @@ export default defineConfig({
       "src/routes/addon-activate-quantity.test.ts",
       "src/routes/gsc-site-ownership.test.ts",
       "src/services/gsc-sync-ownership.test.ts",
+      // AI Forecasting — stored forecast summary (growth sign, stale rows; PR #496)
+      "src/services/forecasting-service.test.ts",
+      "src/services/gsc-search-analytics-pagination.test.ts",
       "src/services/ga4-property-discovery.test.ts",
       "src/routes/chat-notifications.test.ts",
       "src/routes/team-chat-reliability.test.ts",
@@ -202,6 +267,9 @@ export default defineConfig({
       // Checkout abandonné — gardes contre les mutations prématurées
       "src/tests/checkout-abandon-guards.test.ts",
       "src/tests/public-pages-fpsource.test.ts",
+      "src/lib/env-database-url.test.ts",
+      "src/services/db-startup-attestation.test.ts",
+      "src/services/cert-db-bootstrap.test.ts",
       "src/services/stripe-factory-securite.test.ts",
       "src/lib/addon-masquage-temporaire.test.ts",
       "src/routes/integrations-connections-guard.test.ts",
@@ -213,6 +281,8 @@ export default defineConfig({
       // Livraison Stripe : signature reelle, cinq familles d'evenements, rejeu,
       // separation live/test et exemption des webhooks du compteur global
       "src/tests/stripe-webhook-delivery.test.ts",
+      // Prevision : requete d historique GSC (colonne date TEXT) et jour ISO.
+      "src/services/forecasting-generate-sql.test.ts",
     ],
     environment: "node",
     globals:     false,

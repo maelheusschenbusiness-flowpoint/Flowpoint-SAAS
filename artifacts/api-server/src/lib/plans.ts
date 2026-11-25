@@ -159,7 +159,12 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     keywordDomination:    process.env["STRIPE_TEST_PRICE_ID_ADDON_KDE"]         ?? "",
     backlinkIntelligence: process.env["STRIPE_TEST_PRICE_ID_ADDON_BACKLINK"]    ?? "",
     behavioralAI:         process.env["STRIPE_TEST_PRICE_ID_ADDON_BEHAVAI"]     ?? "",
+    // Surcharges TEST (mêmes noms de variables que la beta) : sans elles le mode TEST retombe sur l'id LIVE.
+    aiCro:                process.env["STRIPE_TEST_PRICE_ID_ADDON_AI_CRO"]      ?? "",
+    revenueLeak:          process.env["STRIPE_TEST_PRICE_ID_ADDON_REVENUE_LEAK"] ?? "",
     aiForecasting:        process.env["STRIPE_TEST_PRICE_ID_ADDON_FORECAST"]    ?? "",
+    // Sans cette ligne l'add-on retombait sur l'id LIVE en mode TEST : Stripe le refusait (502 a l'activation).
+    marketIntelligence:   process.env["STRIPE_TEST_PRICE_ID_ADDON_MARKET_INTELLIGENCE"] ?? "",
     enterprisePermissions:process.env["STRIPE_TEST_PRICE_ID_ADDON_ENT"]         ?? "",
     advancedWebhooks:     process.env["STRIPE_TEST_PRICE_ID_ADDON_WEBHOOKS"]    ?? "",
     retention365d:        process.env["STRIPE_TEST_PRICE_ID_ADDON_RET365"]      ?? "",
@@ -167,6 +172,10 @@ export const ADDON_PRICE_IDS_TEST: Record<string, string> = Object.fromEntries(
     customDomain:         process.env["STRIPE_TEST_PRICE_ID_ADDON_CD"]          ?? "",
     extraSeats:           process.env["STRIPE_TEST_PRICE_ID_ADDON_SEATS"]       ?? "",
     gbpSlots10:           process.env["STRIPE_TEST_PRICE_ID_ADDON_GBP10"]       ?? "",
+    // CRM / AI GBP Posting : sans surcharge TEST, le mode TEST retombait sur l'id LIVE code en dur
+    // (« No such price » -> activation 502 stripe_error).
+    aiGbpPosting:         process.env["STRIPE_TEST_PRICE_ID_ADDON_AI_GBP_POSTING"] ?? "",
+    crmIntegration:       process.env["STRIPE_TEST_PRICE_ID_ADDON_CRM_INTEGRATION"] ?? "",
     // Paquets de capacite : sans surcharge TEST, le mode TEST retombait sur l'id LIVE (refus Stripe).
     auditsPack200:        process.env["STRIPE_TEST_PRICE_ID_ADDON_AUDITS200"]    ?? "",
     auditsPack1000:       process.env["STRIPE_TEST_PRICE_ID_ADDON_AUDITS1000"]   ?? "",
@@ -363,10 +372,7 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "gbpSlots10",
   // reviewIntelligence: Pro/Ultra ont deja la fonction par leur plan ; l'achat ne debloque rien de plus.
   "reviewIntelligence",
-  // localDominationMaps / zapierIntegration: hors commercialisation jusqu'a certification complete (Stripe TEST + fonctionnel).
-  // Les droits et abonnements existants restent reconnus ; retirer de ce set a la validation du proprietaire.
-  "localDominationMaps",
-  "zapierIntegration",
+  // localDominationMaps / zapierIntegration : remis en vente (Pro/Ultra, via _PRO_EXCLUSIVE) apres certification.
   // ── No requireAddon gate in any route ─────────────────────────────────────
   // slaMonitoring: no requireAddon("slaMonitoring",...) found in any route file.
   // Buying it unlocks nothing. Existing /betterstack/monitors/:id/sla is ungated.
@@ -384,10 +390,7 @@ export const COMING_SOON_ADDONS = new Set<string>([
   "aiWorkflows",
 
   // ── Routes exist but not commercially released ─────────────────────────────
-  // crmIntegration: crm.ts routes are complete but addon not yet sold.
-  // Route exists and works, blocked by this set (POST /api/addons/crmIntegration/activate → 503).
-  "crmIntegration",
-
+  // [CERT ONLY] crmIntegration retire de COMING_SOON pour la build beta de certification.
   // ssoEnterprise: sso.ts line 82 TODO, SAML_ROADMAP_PROVIDERS → 501.
   // Only Google Workspace OIDC works today (plan feature, not this addon).
   "ssoEnterprise",
@@ -427,9 +430,12 @@ export const COMING_SOON_ADDONS = new Set<string>([
  *                        d'une connexion OAuth GBP active (intégration externe). → BETA
  *
  *   zapierIntegration → integrations.ts:131/158 gate réelle. Dépend OAuth
- *                        Zapier/Make (connexion externe non bundlée). → BETA
+ *                        Zapier/Make (connexion externe non bundlée). Vendu Pro/Ultra,
+ *                        volontairement hors BETA_ADDONS.
  */
 export const BETA_ADDONS = new Set<string>([
+  // [CERT ONLY — DO NOT MERGE] CRM achetable sur la build beta de certification.
+  "crmIntegration",
   // Beta describes feature maturity, NOT commercial mode.
   // A beta add-on CAN be included in a plan (e.g. Ultra) — it then shows as
   // "🧪 Beta — Inclus dans votre plan" and cannot be re-purchased.
@@ -625,13 +631,15 @@ const _STANDARD_PURCHASABLE = new Set<string>([
 const _PRO_EXCLUSIVE = new Set<string>([
   // NOTE: COMING_SOON_ADDONS must never appear here — they are not purchasable.
   // Removed: globalMonitoring, slaMonitoring, aiContentStrategist, abTestingAI,
-  //          crmIntegration, aiExecutiveReport, aiWorkflows, localDominationMaps,
-  //          zapierIntegration (all COMING_SOON)
+  //          crmIntegration, aiExecutiveReport, aiWorkflows (all COMING_SOON)
+  // localDominationMaps / zapierIntegration : remis en vente (Pro/Ultra), hors COMING_SOON.
   "keywordDomination",
-  "aiGbpPosting",
+  "aiGbpPosting", "localDominationMaps",
   "aiCro", "behavioralAI", "revenueLeak",
+  "zapierIntegration",
   "aiForecasting", "marketIntelligence",
   "enterprisePermissions",
+  "crmIntegration", // [CERT ONLY — DO NOT MERGE]
 ]);
 
 const _ULTRA_EXCLUSIVE = new Set<string>([
@@ -670,14 +678,21 @@ export function getPlanForPriceId(priceId: string): string | null {
 }
 
 export function getAddonForPriceId(priceId: string): string | null {
+  if (!priceId) return null;
   for (const [addon, id] of Object.entries(ADDON_PRICE_IDS)) {
+    if (id && id === priceId) return addon;
+  }
+  // Mode TEST : addon-stripe-sync facture avec ADDON_PRICE_IDS_TEST (cf. getAddonPriceId).
+  // Sans cette recherche, la reconciliation du webhook (customer.subscription.updated) ne
+  // reconnait aucun item TEST et desactive TOUS les add-ons payants des qu'un 2e item est ajoute.
+  for (const [addon, id] of Object.entries(ADDON_PRICE_IDS_TEST)) {
     if (id && id === priceId) return addon;
   }
   return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Add-ons « garde prix » (lot 1 de portage depuis Test-Replit)
+// Add-ons « garde prix » (lots 1 et 2 de portage depuis Test-Replit)
 //
 // Un add-on déclaré ici est INVISIBLE ET NON ACHETABLE tant qu'aucun prix
 // Stripe n'est configuré pour lui :
@@ -697,6 +712,8 @@ export interface PriceGatedAddon {
   priceEnvVar: string;
   /** Variables TEST, la première renseignée l'emporte. */
   testPriceEnvVars: readonly string[];
+  /** Plans payants où l'add-on est achetable (défaut : standard, pro, ultra, agency). */
+  plans?: readonly string[];
 }
 
 export const PRICE_GATED_ADDONS: Record<string, PriceGatedAddon> = {};
@@ -729,6 +746,36 @@ PRICE_GATED_ADDONS["conversionOpportunityEngine"] = {
   testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_CONVERSION_OPPORTUNITY"],
 };
 
+// [lot2:agencyPortfolioPriorities]
+PRICE_GATED_ADDONS["agencyPortfolioPriorities"] = {
+  definition: { name: "Agency Portfolio Priorities", category: "Reporting", description: "Priorisez les sites clients selon les audits SEO et les clics organiques réellement mesurés.", priceEur: 19, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_AGENCY_PORTFOLIO_PRIORITIES",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_AGENCY_PORTFOLIO_PRIORITIES"],
+};
+
+// [lot2:localLandingOpportunities]
+PRICE_GATED_ADDONS["localLandingOpportunities"] = {
+  definition: { name: "Local Landing Opportunities", category: "Local SEO", description: "Repérez les recherches locales réelles qui justifient une page de service ou de zone.", priceEur: 15, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_LOCAL_LANDING_OPPORTUNITIES",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_LANDING"],
+};
+
+// [lot2:localPresenceOptimizer]
+PRICE_GATED_ADDONS["localPresenceOptimizer"] = {
+  definition: { name: "Local Presence Optimizer", category: "Local SEO", description: "Priorisation des informations manquantes sur vos fiches GBP", priceEur: 9, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_LOCAL_PRESENCE_OPTIMIZER",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_LOCAL_PRESENCE"],
+  // Test-Replit : _PRO_EXCLUSIVE (pas d'achat sur Standard).
+  plans: ["pro", "ultra", "agency"],
+};
+
+// [lot2:gbpPerformanceLeads]
+PRICE_GATED_ADDONS["gbpPerformanceLeads"] = {
+  definition: { name: "GBP Performance & Leads", category: "Local SEO", description: "Performances GBP réelles, objectifs configurables et alertes de baisse des actions locales.", priceEur: 15, oneTime: false, quantity: false },
+  priceEnvVar: "STRIPE_PRICE_ID_GBP_PERFORMANCE_LEADS",
+  testPriceEnvVars: ["STRIPE_TEST_PRICE_ID_ADDON_GBP_PERFORMANCE"],
+};
+
 function isStripeTestModeActive(): boolean {
   if (process.env["STRIPE_TEST_MODE"] !== "true") return false;
   const key = process.env["STRIPE_TEST_KEY"] || process.env["STRIPE_TEST_SECRET_KEY"] || "";
@@ -755,7 +802,7 @@ export function applyPriceGatedAddons(
     if (test) ADDON_PRICE_IDS_TEST[key] = test;
     ADDON_DEFINITIONS[key] = gated.definition;
     FLAG_ADDONS.add(key);
-    for (const planId of ["standard", "pro", "ultra", "agency"]) {
+    for (const planId of gated.plans ?? ["standard", "pro", "ultra", "agency"]) {
       (PLAN_ALLOWED_ADDONS[planId] as Set<string>).add(key);
     }
     opened.push(key);
