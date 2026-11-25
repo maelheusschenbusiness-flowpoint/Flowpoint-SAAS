@@ -9,8 +9,10 @@ import { runInNewContext } from "node:vm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ orgDb: vi.fn() }));
+// La garde de propriete du site lit `db` (hors RLS) : chaine select/from/where/limit -> aucune ligne.
+vi.mock("drizzle-orm", async (orig) => ({ ...(await orig<typeof import("drizzle-orm")>()), eq: vi.fn(() => ({})) }));
 vi.mock("@workspace/db", () => ({
-  db: {}, behaviorSiteTokensTable: {}, behaviorEventsTable: {}, croExperimentsTable: {},
+  db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }) }, behaviorSiteTokensTable: {}, behaviorEventsTable: {}, croExperimentsTable: {},
 }));
 vi.mock("../middlewares/planGate.js", () => ({
   requireAddon: () => (_r: unknown, _s: unknown, next: () => void) => next(),
