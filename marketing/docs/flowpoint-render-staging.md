@@ -54,23 +54,29 @@ The service expects:
 - `SESSION_SECRET`: a production-only secret of at least 32 characters.
 
 If the reviewed quota tables are not already available in the existing
-PostgreSQL database, leave `PUBLIC_AUDIT_ENABLED=false` and stop before any SQL,
-database creation, or migration. A schema write requires explicit approval.
+PostgreSQL database, leave `PUBLIC_AUDIT_ENABLED=false` and stop before any
+schema write, database creation, or migration. A schema write requires explicit
+approval.
 
-Production audit settings to prepare in the existing Render service:
+Production audit settings to prepare in the existing Render service. The free
+audit is required to be functional when `flowpoint.pro` first serves from
+Render, so do not proceed with DNS until every read-only database, permission,
+connection-capacity, proxy-IP, and secret check in
+[`flowpoint-render-cutover.md`](./flowpoint-render-cutover.md)
+has passed:
 
 ```text
-PUBLIC_AUDIT_ENABLED=false
+PUBLIC_AUDIT_ENABLED=true
 PUBLIC_AUDIT_TEST_MODE=false
 PUBLIC_AUDIT_DAILY_LIMIT=10
 PUBLIC_AUDIT_NETWORK_DAILY_LIMIT=5
 PUBLIC_AUDIT_MAX_CONCURRENT=2
 ```
 
-The per-visitor limit is fixed at three per UTC day in code. Keep the audit
-disabled until its database, proxy-derived client IP, quota behavior, and
-external-fetch safety have been validated and the user separately authorizes
-activation.
+The per-visitor limit is fixed at three per UTC day in code. If any check cannot
+be confirmed in read-only mode, the cutover is blocked; do not enable the audit
+and do not change DNS. Do not create a database, run DDL, or perform a real audit
+to try to clear the blocker.
 
 ## Forms and email
 
