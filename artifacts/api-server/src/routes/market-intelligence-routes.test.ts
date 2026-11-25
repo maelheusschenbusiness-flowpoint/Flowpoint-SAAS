@@ -12,6 +12,9 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock("../services/market-intel-service.js", () => ({
   getMarketDashboard: m.getMarketDashboard, generateMarketReport: m.generateMarketReport, detectCompetitorMovements: m.detectCompetitorMovements,
+  // meme regle que le service (testee dans market-intel-window.test.ts)
+  marketDashboardSource: (d: { trends: unknown[]; competitor_movements: unknown[] }) =>
+    d.trends.length ? "gsc" : d.competitor_movements.length ? "competitor_rankings" : "no_data",
 }));
 vi.mock("../middlewares/planGate.js", () => ({ requireAddon: () => (_a: unknown, _b: unknown, n: () => void) => n() }));
 vi.mock("../middlewares/requireRole.js", () => ({
@@ -47,6 +50,14 @@ describe("lecture", () => {
     expect((await request(app()).get("/api/market-intelligence/trends?limit=2")).body.count).toBe(2);
     expect((await request(app()).get("/api/market-intelligence/trends?limit=9999")).body.count).toBe(5);
     expect((await request(app()).get("/api/market-intelligence/trends?min_score=abc&limit=zzz")).body.count).toBe(5);
+  });
+  it("le tableau de bord annonce sa source (gsc / competitor_rankings / no_data)", async () => {
+    m.getMarketDashboard.mockResolvedValue(dash(2));
+    expect((await request(app()).get("/api/market-intelligence")).body.source).toBe("gsc");
+    m.getMarketDashboard.mockResolvedValue({ ...dash(0), competitor_movements: [{ id: "x" }] });
+    expect((await request(app()).get("/api/market-intelligence")).body.source).toBe("competitor_rankings");
+    m.getMarketDashboard.mockResolvedValue(dash(0));
+    expect((await request(app()).get("/api/market-intelligence")).body.source).toBe("no_data");
   });
   it("sans donnée : liste vide, source « no_data » (et non une panne)", async () => {
     m.getMarketDashboard.mockResolvedValue(dash(0));

@@ -96,6 +96,7 @@ export default defineConfig({
       // Market Intelligence : ai_market_reports (absente) + generation de rapport
       "src/services/market-intel-tables-db.test.ts",
       "src/services/market-intel-service.test.ts",
+      "src/services/market-intel-window.test.ts",
       "src/routes/market-intelligence-routes.test.ts",
       // CRM Integrations : OAuth HubSpot chiffre, synchronisation, webhooks, tables CRM
       "src/services/crm-tables-db.test.ts",
