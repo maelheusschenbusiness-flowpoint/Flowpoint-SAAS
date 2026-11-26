@@ -1,53 +1,48 @@
 # État de préparation — PR #556
 
 État relevé le 26 novembre 2026. La PR reste ouverte vers
-`marketing-render-staging`. Les conclusions PostgreSQL ci-dessous concernent
-uniquement `flowpoint_audit_staging`, interrogée depuis le Web Shell de
-`flowpoint-marketing-staging`; elles ne certifient aucune base de production.
+`marketing-render-staging`. Les résultats PostgreSQL portent uniquement sur
+`flowpoint_audit_staging`, depuis le Web Shell de
+`flowpoint-marketing-staging`; ils ne certifient aucune base de production.
 
-## PostgreSQL staging — contrôles clôturés
+## PostgreSQL staging — vérifications clôturées
 
-Tous les contrôles communiqués sont acquis ; ne pas les relancer :
+Tous les contrôles communiqués sont acquis. Ne pas les relancer :
 
-- Connexion psql au moyen de `PUBLIC_AUDIT_DATABASE_URL`; base visée
-  `flowpoint_audit_staging`.
-- 9/9 colonnes conformes au schéma attendu.
+- 9/9 colonnes conformes au schéma du moteur.
 - `quota_delete`, `public_usage`, `quota_resolution_ok`,
-  `slots_resolution_ok` et `purge_index_conforme` à `true`.
-- Les droits SELECT, INSERT et UPDATE, les deux clés primaires, les contraintes
-  attendues et l’absence de RLS ont été confirmés.
-- Limites de connexions par rôle et par base : `-1` (aucune limite spécifique).
-  Plafond PostgreSQL `103`; 8 connexions lors du relevé précédent.
-- Deux slots et zéro compteur au relevé précédent. Les slots sont utilisables;
-  le moteur crée ceux qui manquent par DML normal. Zéro compteur est un état
-  initial attendu.
+  `slots_resolution_ok` et `purge_index_conforme` sont `true`.
+- SELECT/INSERT/UPDATE, clés primaires, contraintes et absence de RLS confirmés.
+- Limites du rôle et de la base : `-1` (pas de limite spécifique);
+  `max_connections=103`, 8 connexions au relevé précédent.
+- Deux slots et zéro compteur au relevé précédent; c’est l’état initial attendu.
 
-Aucune nouvelle requête SQL ni écriture PostgreSQL n’est demandée ou effectuée.
+Aucune nouvelle commande SQL ou écriture PostgreSQL n’est demandée ni effectuée.
+Aucune base de production n’a été consultée.
 
-## Valeurs Render à corriger
+## Quatre variables Render à régler
 
-Le service Render rapporte `production=true`, `session_secret_min_32=true` et
-`audit_enabled_now=true`. En revanche, `test_mode_false`, `global_10`,
-`network_5` et `concurrency_2` sont faux. Les indicateurs ne révèlent pas les
-valeurs brutes.
+Render rapporte `production=true`, `session_secret_min_32=true` et
+`audit_enabled_now=true`. Les indicateurs `test_mode_false`, `global_10`,
+`network_5` et `concurrency_2` sont faux; ils ne révèlent pas les valeurs brutes.
 
-Le code applique ces règles :
+Valeurs par défaut effectives dans le code :
 
-- Test mode est actif uniquement si `PUBLIC_AUDIT_TEST_MODE === "true"`.
-  Une variable absente donne donc le comportement test mode false, mais une
-  valeur littérale `"true"` l’active.
-- `PUBLIC_AUDIT_DAILY_LIMIT` retombe à 10 si absente, invalide ou non positive;
-  sinon la valeur est retenue, plafonnée à 10 en test mode ou 10 000 hors test.
-- `PUBLIC_AUDIT_NETWORK_DAILY_LIMIT` retombe à 5 si absente, invalide ou non
-  positive; sinon la valeur est retenue, plafonnée à 5 en test mode ou 500 hors
-  test.
-- `PUBLIC_AUDIT_MAX_CONCURRENT` retombe à 2 si absente, invalide ou non
-  positive; sinon la valeur est retenue jusqu’au plafond de 4.
+- Le test mode n’est actif que si `PUBLIC_AUDIT_TEST_MODE` vaut exactement
+  `"true"`; une variable absente agit donc comme test mode false.
+- La limite globale retombe à 10 si `PUBLIC_AUDIT_DAILY_LIMIT` est absente,
+  invalide ou non positive. Une autre valeur positive est utilisée, jusqu’à
+  10 000 en mode production.
+- La limite réseau retombe à 5 si `PUBLIC_AUDIT_NETWORK_DAILY_LIMIT` est
+  absente, invalide ou non positive. Une autre valeur positive est utilisée,
+  jusqu’à 500 en mode production.
+- La simultanéité retombe à 2 si `PUBLIC_AUDIT_MAX_CONCURRENT` est absente,
+  invalide ou non positive; une valeur positive différente est utilisée,
+  plafonnée à 4.
 
-Les valeurs par défaut sont sûres, mais les indicateurs false ne permettent pas
-de confirmer que ce sont bien les valeurs effectives : une valeur positive
-différente serait appliquée. Pour obtenir sans ambiguïté le profil pilote
-attendu, configurer ces quatre variables Render exactement ainsi :
+Les valeurs de repli sont sûres, mais les indicateurs false ne permettent pas
+de confirmer qu’elles sont les valeurs actives. Pour le profil pilote attendu,
+configurer exactement :
 
 ```text
 PUBLIC_AUDIT_TEST_MODE=false
@@ -56,52 +51,47 @@ PUBLIC_AUDIT_NETWORK_DAILY_LIMIT=5
 PUBLIC_AUDIT_MAX_CONCURRENT=2
 ```
 
-Ne pas afficher ni copier `SESSION_SECRET`. L’audit est déjà activé sur le
-service Render mesuré. L’activation démarre une purge périodique par DELETE;
-aucune modification de variable n’a été effectuée par cette préparation. Une
-modification Render nécessite son propre redémarrage/déploiement contrôlé et
-peut commencer les écritures normales du service.
+Ne jamais afficher ni copier `SESSION_SECRET`. L’audit est déjà activé sur le
+service Render mesuré. Son démarrage déclenche une purge DELETE et une purge
+horaire; aucune variable n’a été changée ici.
 
-## Proxy et IP client — résultat non certifié
+## Proxy et IP client — non certifiés pour la production publique
 
 Le code de la PR configure Express avec `trust proxy = 1`. Le moteur lit
-`req.ip`, normalise l’adresse avec `ipaddr.process`, puis ne stocke qu’une clé
-HMAC; il ne prend pas directement le premier élément fourni dans
-`X-Forwarded-For`.
+`req.ip`, normalise l’adresse avec `ipaddr.process`, puis en stocke uniquement
+une clé HMAC.
 
-Un contrôle limité à `flowpoint-marketing-staging.onrender.com` a envoyé 31
-requêtes **GET** à `/api/public-audit/quota`, chacune avec une valeur
-`X-Forwarded-For` de test différente. Les 31 réponses étaient HTTP 200; aucune
-requête POST d’audit n’a été lancée. Ce résultat ne démontre pas que l’IP client
-est fiable : le limiteur en mémoire est propre à chaque processus, et le nombre
-de processus/routage de Render n’a pas été établi. Il peut donc masquer des
-compteurs séparés ou un en-tête usurpable. Le code seul ne prouve pas ce que
-l’ingress Render met réellement dans le dernier saut de l’en-tête.
+Deux vérifications limitées au staging ont envoyé au total 62 requêtes GET à
+`/api/public-audit/quota`, avec des valeurs `X-Forwarded-For` distinctes. Aucun
+POST d’audit n’a été lancé. Les réponses étaient HTTP 200; une série a montré
+des compteurs `RateLimit-Remaining` qui diminuaient sur certains processus et
+se réinitialisaient sur d’autres. Cela révèle que le limiteur en mémoire est
+propre aux processus/instances et que le routage répartit les requêtes. Ces
+résultats ne certifient pas que `req.ip` correspond à l’adresse réelle du
+visiteur plutôt qu’à une adresse de proxy partagée.
 
-**La validation IP reste un blocage avant fusion/déploiement public.** Ne pas
-publier l’audit gratuit sur `flowpoint.pro` tant qu’un contrôle qui tient compte
-du routage Render ne montre pas que des `X-Forwarded-For` falsifiés ne changent
-pas le client retenu. Ne pas ajouter de route publique divulguant une IP. Si le
-comportement n’est pas vérifiable par les outils Render existants, il faut une
-modification minimale et protégée à valider séparément avant la fusion.
+**Ne pas déclarer le contrôle IP réussi et ne pas exposer l’audit sur
+`flowpoint.pro` avant une observation Render qui confirme le client réellement
+retenu et résiste à un `X-Forwarded-For` falsifié.** Le code seul et les tests
+de limiteur en mémoire ne permettent pas de distinguer l’IP client de celle
+d’un proxy. Ne pas créer une route publique qui révèle l’adresse; une
+instrumentation temporaire nécessite une décision séparée.
 
 ## Préparation de la fusion et de la bascule
 
-- La PR #556 demeure ouverte; cette mise à jour ne la fusionne pas.
-- Au relevé précédent, le SHA de code examiné n’avait aucun check-run GitHub
-  attaché. Les tests locaux réussis ne remplacent pas les validations requises
-  par la branche cible ni l’approbation humaine.
-- Avant une fusion autorisée : renseigner les quatre valeurs exactes ci-dessus,
-  résoudre la vérification IP proxy, puis obtenir les checks/revues requis.
-- Avant un déploiement manuel autorisé : vérifier le SHA approuvé, les commandes
-  et le contrôle `/healthz` sur le service Render existant.
-- Avant une bascule autorisée : vérifier sur le déploiement staging la santé,
-  SSR, routes SEO, noindex et absence de tracking sur l’hôte staging; confirmer
-  domaines/TLS, retour arrière et accès Replit. Ces tests ne nécessitent aucune
-  écriture PostgreSQL ni audit réel.
-- `flowpoint.pro` demeure servi par Replit. Aucun DNS, service public,
-  branche `Flowpoint` ou `Test-Replit`, ni base de production n’a été modifié.
-  Aucune nouvelle infrastructure payante n’a été créée.
+- La PR #556 demeure ouverte; aucune fusion n’a été effectuée.
+- Le SHA de code examiné n’avait aucun check-run GitHub attaché. Les contrôles
+  locaux déjà réussis ne remplacent pas les checks et revues exigés par la
+  branche cible.
+- Avant fusion autorisée : régler les quatre variables ci-dessus, lever le
+  blocage d’observation proxy/IP, puis attendre les validations et approbations
+  requises.
+- Avant déploiement manuel autorisé : vérifier le SHA approuvé et `/healthz`
+  sur le service Render existant.
+- Avant bascule autorisée : vérifier SSR, routes SEO, noindex et absence de
+  tracking sur staging; confirmer domaines/TLS, retour arrière et disponibilité
+  de Replit. Aucun audit POST réel n’est lancé par ces contrôles.
 
-Sans audit POST contrôlé, le parcours complet de l’audit n’est pas certifié.
-Cette préparation n’en lance aucun.
+`flowpoint.pro` reste servi par Replit. Aucun DNS, service public, base de
+production, branche `Flowpoint` ou `Test-Replit` n’a été modifié. Aucune
+infrastructure payante n’a été créée.
