@@ -95,58 +95,24 @@ inventer de jeton DNS.
 
 ### Porte de sécurité obligatoire pour l’audit gratuit
 
-L’audit gratuit doit être disponible dès que `flowpoint.pro` est servi par
-Render. Avant toute bascule DNS, vérifier en lecture seule, dans le PostgreSQL
-Render déjà utilisé par le service et avec le rôle que prendra
-`PUBLIC_AUDIT_DATABASE_URL` :
+    Les contrôles PostgreSQL de [0m`flowpoint_audit_staging` ont été exécutés en lecture seule par l’utilisateur dans le Web Shell Render le 26 novembre 2026 et sont clôturés : 9/9 colonnes conformes; DELETE, USAGE du schéma public, résolution des tables et index de purge conformes; clés, contraintes, SELECT/INSERT/UPDATE et absence de RLS confirmés. Les limites du rôle et de la base sont illimitées; PostgreSQL indique un maximum de 103 connexions et 8 utilisées au relevé. Deux slots et zéro compteur étaient présents au relevé précédent. **Ne pas relancer de commandes SQL de vérification** : aucune autre lecture de base n’est demandée.
 
-1. Les tables `public_audit_quota_counters` et
-   `public_audit_concurrency_slots` existent déjà et correspondent exactement
-   aux colonnes, types, clés, contraintes et index décrits dans
-   `scripts/public-audit-release-schema.sql`. Ne pas exécuter ce fichier.
-2. Le rôle applicatif peut lire, insérer, mettre à jour et supprimer dans
-   `public_audit_quota_counters`, et lire, insérer et mettre à jour dans
-   `public_audit_concurrency_slots`. Vérifier également l’absence de politiques
-   RLS ou de limites de connexion qui empêcheraient ces opérations.
-3. `PUBLIC_AUDIT_DATABASE_URL` cible bien cette base existante; ne pas la
-   remplacer par la base Replit ni par une base du projet Neon d’add-ons.
-4. Le compte et le service Render existants ont assez de connexions disponibles
-   pour le pool de quota (`max: 4`) et la concurrence configurée (`2`).
-5. Le service utilise `PUBLIC_AUDIT_TEST_MODE=false`, un `SESSION_SECRET` propre
-   à la production d’au moins 32 caractères et les plafonds listés ci-dessus :
-   10 audits globaux, 5 par adresse IP normalisée exacte, 3 par visiteur et 2
-   simultanés. Vérifier dans Render que l’adresse IP observée vient du proxy
-   Render et non d’un en-tête fourni par le visiteur.
+    La configuration observée sur le service staging a quatre indicateurs à faux. Pour le profil pilote exact, définir ces valeurs dans Render :
 
-Ces contrôles ne doivent lire ni contenu de leads, ni conversations, ni
-historique Replit. Les seuls objets concernés sont les deux tables de quotas.
-Ne pas réaliser d’audit réel, de test d’écriture, de DDL ou de migration pendant
-la préparation. Si l’une des vérifications échoue ou reste inaccessible,
-**bloquer la bascule DNS** : l’audit ne serait pas fonctionnel en sécurité.
-Après confirmation de tous les contrôles, préparer
-`PUBLIC_AUDIT_ENABLED=true` dans le service Render existant avant la bascule,
-sans DDL ni migration. La table de concurrence peut être vide : le code ajoute
-les deux lignes de slots en DML lors de la première réservation d’audit. Les
-audits réellement demandés après la mise en service écriront ensuite des
-compteurs de quotas pseudonymisés dans la base existante; ne pas provoquer ces
-écritures pendant la préparation. Le service marketing ne modifie pas
-`app.flowpoint.pro`;
-les événements de funnel existants pointent toujours vers cette application.
+    ```text
+    PUBLIC_AUDIT_TEST_MODE=false
+    PUBLIC_AUDIT_DAILY_LIMIT=10
+    PUBLIC_AUDIT_NETWORK_DAILY_LIMIT=5
+    PUBLIC_AUDIT_MAX_CONCURRENT=2
+    ```
 
-**État actualisé au 26 novembre 2026 :** ne pas relancer la liste générale
-ci-dessus. Les tables, clés, contraintes, droits SELECT/INSERT/UPDATE, RLS,
-compteurs et capacité globale ont déjà été relevés sur Render. Le
-[rapport de préparation](./flowpoint-render-readiness.md) distingue les acquis
-des points encore ouverts et contient le **seul bloc Web Shell à exécuter** :
-colonnes exactes, DELETE, résolution du schéma, forme de l’index, limites
-spécifiques et profil du service, sans écriture ni affichage de secrets.
+    Le contrôle de longueur du secret est déjà réussi; sa valeur ne doit pas être affichée. `PUBLIC_AUDIT_ENABLED=true` est déjà signalé sur ce service staging. Le démarrage avec ce réglage lance une purge des compteurs expirés, puis une purge horaire. Cette procédure ne modifie ni les variables ni la base.
 
-**Attention à l’activation :** avec `PUBLIC_AUDIT_ENABLED=true`, le moteur
-lance une purge DELETE au démarrage puis chaque heure. Ne pas activer ou
-redémarrer ce profil pendant une vérification strictement en lecture seule.
-L’autorisation d’activer les écritures reste distincte.
+    Le code utilise `trust proxy = 1`, puis `req.ip` normalisé et pseudonymisé. Le contrôle staging a envoyé 31 GET à `/api/public-audit/quota` avec des valeurs X-Forwarded-For distinctes; les 31 réponses étaient HTTP 200, sans POST d’audit. Ce résultat ne certifie pas que l’IP client est fiable : le limiteur est en mémoire par processus et le nombre/routage des instances Render n’a pas été établi. **Ne pas basculer l’audit sur flowpoint.pro avant d’avoir prouvé que les valeurs X-Forwarded-For falsifiées ne changent pas le client retenu.** Ne pas exposer d’adresse IP dans une route publique.
 
-7. Avant DNS, vérifier en lecture seule la paire de domaines dans Render, puis
+    Voir le [rapport de préparation](./flowpoint-render-readiness.md) pour le détail des valeurs par défaut, le résultat du contrôle proxy et les conditions de fusion. Aucun merge, déploiement, changement DNS, modification de base de production ou changement des branches `Flowpoint` / `Test-Replit` n’a été effectué. Replit reste la cible de `flowpoint.pro` jusqu’à une bascule explicitement autorisée.
+
+    7. Avant DNS, vérifier en lecture seule la paire de domaines dans Render, puis
    le staging :
    - l’URL `.onrender.com` répond 200 et garde
      `X-Robots-Tag: noindex, nofollow`;
