@@ -95,9 +95,9 @@ inventer de jeton DNS.
 
 ### Porte de sécurité obligatoire pour l’audit gratuit
 
-    Les contrôles PostgreSQL de `flowpoint_audit_staging` ont été exécutés en lecture seule par l’utilisateur dans le Web Shell Render le 26 novembre 2026 et sont clôturés : 9/9 colonnes conformes; DELETE, USAGE du schéma public, résolution des tables et index de purge conformes; clés, contraintes, SELECT/INSERT/UPDATE et absence de RLS confirmés. Les limites du rôle et de la base sont illimitées; PostgreSQL indique un maximum de 103 connexions et 8 utilisées au relevé. Deux slots et zéro compteur étaient présents au relevé précédent. **Ne pas relancer de commandes SQL de vérification** : aucune autre lecture de base n’est demandée.
+    Les contrôles PostgreSQL de `flowpoint_audit_staging` ont été exécutés en lecture seule par l’utilisateur le 26 novembre 2026 et sont clôturés : 9/9 colonnes conformes; DELETE, USAGE du schéma, résolution des tables et index de purge conformes; clés, contraintes, droits SELECT/INSERT/UPDATE et absence de RLS confirmés. Le rôle et la base n’ont pas de limite de connexion spécifique; max_connections vaut 103, avec 8 connexions au relevé précédent. Deux slots et zéro compteur au relevé précédent. **Ne pas relancer ces contrôles PostgreSQL.** Aucun accès ni changement à une base de production.
 
-    La configuration observée sur le service staging a quatre indicateurs à faux. Pour le profil pilote exact, définir ces valeurs dans Render :
+    Quatre valeurs du profil pilote sont à corriger/expliciter sur le service Render staging :
 
     ```text
     PUBLIC_AUDIT_TEST_MODE=false
@@ -106,11 +106,11 @@ inventer de jeton DNS.
     PUBLIC_AUDIT_MAX_CONCURRENT=2
     ```
 
-    Le contrôle de longueur du secret est déjà réussi; sa valeur ne doit pas être affichée. `PUBLIC_AUDIT_ENABLED=true` est déjà signalé sur ce service staging. Le démarrage avec ce réglage lance une purge des compteurs expirés, puis une purge horaire. Cette procédure ne modifie ni les variables ni la base.
+    Le contrôle de longueur du secret est réussi sans en exposer la valeur. `PUBLIC_AUDIT_ENABLED=true` est déjà signalé sur le service Render mesuré. Ce processus effectue des purges périodiques; aucune variable ou base n’a été modifiée ici.
 
-    Le code utilise `trust proxy = 1`, puis `req.ip` normalisé et pseudonymisé. Le contrôle staging a envoyé 31 GET à `/api/public-audit/quota` avec des valeurs X-Forwarded-For distinctes; les 31 réponses étaient HTTP 200, sans POST d’audit. Ce résultat ne certifie pas que l’IP client est fiable : le limiteur est en mémoire par processus et le nombre/routage des instances Render n’a pas été établi. **Ne pas basculer l’audit sur flowpoint.pro avant d’avoir prouvé que les valeurs X-Forwarded-For falsifiées ne changent pas le client retenu.** Ne pas exposer d’adresse IP dans une route publique.
+    Le code utilise `trust proxy = 1`, puis `req.ip` normalisé et pseudonymisé. Deux contrôles staging ont envoyé 62 GET à `/api/public-audit/quota` avec X-Forwarded-For distincts; aucune requête POST d’audit. Les réponses HTTP 200 et les compteurs de limiteur qui diminuent/se réinitialisent selon le processus ne certifient pas que l’IP retenue est le visiteur plutôt qu’un proxy partagé. **Ne pas basculer l’audit sur flowpoint.pro avant une observation Render qui confirme l’IP retenue et la résistance aux en-têtes falsifiés.** Ne pas exposer d’adresse IP dans une route publique.
 
-    Voir le [rapport de préparation](./flowpoint-render-readiness.md) pour le détail des valeurs par défaut, le résultat du contrôle proxy et les conditions de fusion. Aucun merge, déploiement, changement DNS, modification de base de production ou changement des branches `Flowpoint` / `Test-Replit` n’a été effectué. Replit reste la cible de `flowpoint.pro` jusqu’à une bascule explicitement autorisée.
+    Voir le [rapport de préparation](./flowpoint-render-readiness.md) pour les replis du code, l’analyse du proxy et les conditions de fusion. Aucun merge, déploiement, changement DNS, accès à une base de production ou modification des branches `Flowpoint` / `Test-Replit` n’a été effectué. Replit reste la cible de `flowpoint.pro` jusqu’à une bascule explicitement autorisée.
 
     7. Avant DNS, vérifier en lecture seule la paire de domaines dans Render, puis
    le staging :
