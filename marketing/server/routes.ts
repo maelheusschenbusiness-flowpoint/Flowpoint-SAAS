@@ -9,6 +9,7 @@ import rateLimit from "express-rate-limit";
 import { registerPublicAuditRoutes } from "./public-audit-routes";
 import { escapeHtml } from "./html-escape";
 import { isAllowedMarketingOrigin } from "./request-origin";
+import { getContactRecipient } from "./contact-config";
 
 function requireSameOrigin(req: Request, res: Response, next: NextFunction) {
   if (process.env.NODE_ENV !== "production") {
@@ -68,6 +69,7 @@ export async function registerRoutes(
       }
 
       const { client, fromEmail } = await getUncachableResendClient();
+      const recipient = getContactRecipient();
       const safeName = escapeHtml(name);
       const safeEmail = escapeHtml(email);
       const safeSubject = escapeHtml(subject);
@@ -75,7 +77,7 @@ export async function registerRoutes(
 
       await client.emails.send({
         from: `Flowpoint Contact <${fromEmail}>`,
-        to: "support@flowpoint.pro",
+        to: recipient,
         replyTo: email,
         subject: `[Contact] ${String(subject).replace(/[\r\n]+/g, " ")}`,
         html: `

@@ -1,5 +1,6 @@
 import { getActiveFpLid } from "./fp-lid";
 import { findMarketingLanguage } from "@shared/marketing-language";
+import { isProductionMarketingHostname } from "@shared/marketing-host";
 
 export type FunnelStep =
   | "landing_vue"
@@ -216,6 +217,7 @@ function saveMarketingAttribution(attribution: MarketingAttribution): void {
  */
 export function captureMarketingAttribution(): void {
   if (typeof window === "undefined") return;
+  if (!isProductionMarketingHostname(window.location.hostname)) return;
   const params = new URLSearchParams(window.location.search);
   const attribution = readMarketingAttribution();
   let changed = false;
@@ -301,12 +303,23 @@ function getCurrentAttribution(): MarketingAttribution {
 }
 
 export function getFunnelAttribution(): MarketingAttribution {
+  if (
+    typeof window === "undefined" ||
+    !isProductionMarketingHostname(window.location.hostname)
+  ) {
+    return {};
+  }
   const current = getCurrentAttribution();
   return current;
 }
 
 export function getFunnelSource(): string {
-  if (!hasFunnelConsent()) return "direct";
+  if (
+    !hasFunnelConsent() ||
+    !isProductionMarketingHostname(window.location.hostname)
+  ) {
+    return "direct";
+  }
 
   const attributedSource = readMarketingAttribution().fp_source;
   if (attributedSource) return attributedSource;
@@ -326,7 +339,12 @@ export function getFunnelSource(): string {
 }
 
 export function getFunnelVisitorId(): string | null {
-  if (!hasFunnelConsent()) return null;
+  if (
+    !hasFunnelConsent() ||
+    !isProductionMarketingHostname(window.location.hostname)
+  ) {
+    return null;
+  }
 
   const stored = safeStoredValue(VISITOR_KEY);
   if (stored && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(stored)) {
@@ -373,7 +391,10 @@ function apiEndpoint(): string | null {
 
 export function sendFunnelEvent(etape: FunnelStep): void {
   if (etape !== "landing_vue" && etape !== "cta_clique") return;
-  if (!hasFunnelConsent()) return;
+  if (
+    !hasFunnelConsent() ||
+    !isProductionMarketingHostname(window.location.hostname)
+  ) return;
 
   const visiteurId = getFunnelVisitorId();
   const endpoint = apiEndpoint();
@@ -445,31 +466,40 @@ export function addFunnelAttributionToSignupLink(anchor: HTMLAnchorElement): voi
   try {
     const url = new URL(anchor.href);
     if (url.origin !== PRODUCTION_APP_ORIGIN) return;
+    if (typeof window === "undefined") return;
 
-    const attribution = getFunnelAttribution();
+    const productionHost = isProductionMarketingHostname(window.location.hostname);
+    const attribution = productionHost ? getFunnelAttribution() : {};
     const language = getDisplayedMarketingLanguage();
     if (language) url.searchParams.set("lang", language);
     else url.searchParams.delete("lang");
 
-    const fpLid = attribution.fp_lid || getActiveFpLid();
-    if (fpLid && FP_LID_PATTERN.test(fpLid)) url.searchParams.set("fp_lid", fpLid);
-    else url.searchParams.delete("fp_lid");
+    if (productionHost) {
+      const fpLid = attribution.fp_lid || getActiveFpLid();
+      if (fpLid && FP_LID_PATTERN.test(fpLid)) url.searchParams.set("fp_lid", fpLid);
+      else url.searchParams.delete("fp_lid");
 
-    for (const key of UTM_KEYS) {
-      const value = attribution[key];
-      if (value && isValidUtm(value)) url.searchParams.set(key, value);
-      else url.searchParams.delete(key);
-    }
-    for (const key of ["fp_source", "fp_ref"] as const) {
-      const value = attribution[key];
-      if (value) url.searchParams.set(key, value);
-      else url.searchParams.delete(key);
-    }
-    if (hasFunnelConsent()) {
-      const visitorId = getFunnelVisitorId();
-      if (visitorId) url.searchParams.set("fp_vid", visitorId);
-      else url.searchParams.delete("fp_vid");
+      for (const key of UTM_KEYS) {
+        const value = attribution[key];
+        if (value && isValidUtm(value)) url.searchParams.set(key, value);
+        else url.searchParams.delete(key);
+      }
+      for (const key of ["fp_source", "fp_ref"] as const) {
+        const value = attribution[key];
+        if (value) url.searchParams.set(key, value);
+        else url.searchParams.delete(key);
+      }
+      if (hasFunnelConsent()) {
+        const visitorId = getFunnelVisitorId();
+        if (visitorId) url.searchParams.set("fp_vid", visitorId);
+        else url.searchParams.delete("fp_vid");
+      } else {
+        url.searchParams.delete("fp_vid");
+      }
     } else {
+      url.searchParams.delete("fp_lid");
+      for (const key of UTM_KEYS) url.searchParams.delete(key);
+      for (const key of ["fp_source", "fp_ref"] as const) url.searchParams.delete(key);
       url.searchParams.delete("fp_vid");
     }
 

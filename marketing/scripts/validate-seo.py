@@ -23,53 +23,53 @@ from xml.etree import ElementTree
 
 
 CLUSTERS = {
-    "Audit SEO": [
-        "comment-faire-audit-seo-site-web",
-        "checklist-audit-seo-technique",
-        "interpreter-resultats-audit-seo",
-        "audit-contenu-seo",
-        "audit-seo-pme-priorites",
-        "frequence-audit-seo-site",
+    "SEO Audit": [
+        "how-to-perform-website-seo-audit",
+        "technical-seo-audit-checklist",
+        "interpret-seo-audit-results",
+        "seo-content-audit",
+        "small-business-seo-audit-priorities",
+        "website-seo-audit-frequency",
     ],
-    "SEO local": [
-        "guide-referencement-local",
-        "optimiser-google-business-profile",
-        "audit-seo-local",
-        "referencement-google-maps",
-        "mots-cles-seo-local",
-        "pages-locales-seo",
-        "avis-google-seo-local",
-        "suivi-referencement-local",
+    "Local SEO": [
+        "local-seo-guide",
+        "optimize-google-business-profile",
+        "local-seo-audit",
+        "google-maps-rankings",
+        "local-seo-keywords",
+        "local-seo-pages",
+        "google-reviews-local-seo",
+        "local-seo-rank-tracking",
     ],
-    "Monitoring SEO": [
-        "monitoring-seo-guide",
-        "surveillance-site-web-indicateurs",
-        "monitoring-disponibilite-site",
-        "alertes-monitoring-site",
-        "suivi-performances-site-web",
-        "monitoring-seo-automatique",
-        "audit-seo-vs-monitoring",
-        "choisir-outil-monitoring-seo",
+    "SEO Monitoring": [
+        "seo-monitoring-guide",
+        "website-monitoring-metrics",
+        "website-uptime-monitoring",
+        "website-monitoring-alerts",
+        "website-performance-tracking",
+        "automated-seo-monitoring",
+        "seo-audit-vs-monitoring",
+        "choose-seo-monitoring-tool",
     ],
-    "Reporting SEO": [
-        "reporting-seo-guide",
-        "rapport-seo-automatique",
-        "tableau-de-bord-seo-kpi",
-        "rapport-google-search-console",
-        "reporting-seo-pme",
-        "rapport-seo-mensuel",
-        "reporting-seo-client",
-        "choisir-outil-reporting-seo",
+    "SEO Reporting": [
+        "seo-reporting-guide",
+        "automated-seo-report",
+        "seo-kpi-dashboard",
+        "google-search-console-report",
+        "small-business-seo-reporting",
+        "monthly-seo-report",
+        "client-seo-reporting",
+        "choose-seo-reporting-tool",
     ],
-    "Analyse concurrentielle SEO": [
-        "analyse-concurrentielle-seo-guide",
-        "identifier-concurrents-seo",
-        "analyse-mots-cles-concurrents",
-        "analyse-contenu-concurrents",
-        "benchmark-seo-indicateurs",
-        "analyse-backlinks-concurrents",
-        "opportunites-seo-concurrence",
-        "choisir-outil-analyse-concurrentielle-seo",
+    "SEO Competitor Analysis": [
+        "seo-competitor-analysis-guide",
+        "identify-seo-competitors",
+        "competitor-keyword-analysis",
+        "competitor-content-analysis",
+        "seo-benchmark-metrics",
+        "competitor-backlink-analysis",
+        "competitor-seo-opportunities",
+        "choose-seo-competitor-analysis-tool",
     ],
 }
 
@@ -83,26 +83,27 @@ LANDINGS = [
 
 LANDING_ARTICLE_LINKS = {
     "/website-monitoring": [
-        "monitoring-seo-guide",
-        "surveillance-site-web-indicateurs",
-        "alertes-monitoring-site",
+        "seo-monitoring-guide",
+        "website-monitoring-metrics",
+        "website-monitoring-alerts",
     ],
     "/seo-reporting": [
-        "reporting-seo-guide",
-        "tableau-de-bord-seo-kpi",
-        "rapport-google-search-console",
+        "seo-reporting-guide",
+        "seo-kpi-dashboard",
+        "google-search-console-report",
     ],
     "/competitor-analysis": [
-        "analyse-concurrentielle-seo-guide",
-        "identifier-concurrents-seo",
-        "opportunites-seo-concurrence",
+        "seo-competitor-analysis-guide",
+        "identify-seo-competitors",
+        "competitor-seo-opportunities",
     ],
 }
 
 TEST_SLUGS = {
     "certification-infrastructure-articles",
-    "brouillon-test-non-publie",
+    "unpublished-test-draft",
 }
+RESOURCE_HUB = "/resources"
 CANONICAL_ORIGIN = "https://flowpoint.pro"
 
 
@@ -121,6 +122,7 @@ class PageParser(HTMLParser):
         self.meta: dict[str, list[str]] = {}
         self.open_graph: dict[str, list[str]] = {}
         self.canonicals: list[str] = []
+        self.hreflangs: list[tuple[str, str]] = []
         self.hrefs: list[str] = []
         self.jsonld: list[str] = []
         self.current_jsonld: list[str] | None = None
@@ -144,8 +146,14 @@ class PageParser(HTMLParser):
                 self.meta.setdefault(name, []).append(content)
             if prop:
                 self.open_graph.setdefault(prop, []).append(content)
-        elif tag == "link" and "canonical" in (values.get("rel") or "").lower().split():
-            self.canonicals.append(values.get("href") or "")
+        elif tag == "link":
+            rel = (values.get("rel") or "").lower().split()
+            if "canonical" in rel:
+                self.canonicals.append(values.get("href") or "")
+            if "alternate" in rel and values.get("hreflang"):
+                self.hreflangs.append(
+                    (values["hreflang"] or "", values.get("href") or "")
+                )
         elif tag == "a" and values.get("href"):
             self.hrefs.append(values["href"] or "")
 
@@ -214,7 +222,7 @@ def internal_path(href: str, base_url: str) -> str | None:
         return None
     base_host = (urlsplit(base_url).hostname or "").lower()
     host = (candidate.hostname or "").lower()
-    allowed_hosts = {base_host, "flowpoint.pro", "www.flowpoint.pro"}
+    allowed_hosts = {base_host, "flowpoint.pro"}
     if host not in allowed_hosts:
         return None
     return candidate.path or "/"
@@ -239,8 +247,8 @@ def parse_page(
         return body, None
     if not parser.h1_values or not any(parser.h1_values):
         errors.append(f"H1 SSR manquant {path}")
-    if parser.html_lang and not parser.html_lang.lower().startswith("fr"):
-        errors.append(f"HTML SSR non français {path}: lang={parser.html_lang}")
+    if parser.html_lang != "en":
+        errors.append(f"HTML SSR non anglais {path}: lang={parser.html_lang or 'absent'}")
     return body, parser
 
 
@@ -255,8 +263,8 @@ def main() -> int:
     args = parser.parse_args()
     base_url = args.base_url.rstrip("/")
     article_slugs = [slug for slugs in CLUSTERS.values() for slug in slugs]
-    article_paths = [f"/ressources/{slug}" for slug in article_slugs]
-    page_paths = ["/ressources", *article_paths, *LANDINGS]
+    article_paths = [f"{RESOURCE_HUB}/{slug}" for slug in article_slugs]
+    page_paths = [RESOURCE_HUB, *article_paths, *LANDINGS]
     errors: list[str] = []
     page_parsers: dict[str, PageParser] = {}
     discovered_internal_paths: set[str] = set()
@@ -288,6 +296,10 @@ def main() -> int:
         titles.append(page.title)
         if len(page.canonicals) != 1 or page.canonicals[0].rstrip("/") != canonical:
             errors.append(f"CANONICAL {path}: {page.canonicals}")
+        if sorted(page.hreflangs) != sorted(
+            [("en", canonical), ("x-default", canonical)]
+        ):
+            errors.append(f"HREFLANG {path}: {page.hreflangs}")
 
         for required_og in ("og:title", "og:description", "og:url"):
             if len(page.open_graph.get(required_og, [])) != 1:
@@ -309,7 +321,7 @@ def main() -> int:
 
         cluster = next(name for name, slugs in CLUSTERS.items() if slug in slugs)
         peers = {
-            f"/ressources/{peer}"
+            f"{RESOURCE_HUB}/{peer}"
             for peer in CLUSTERS[cluster]
             if peer != slug
         }
@@ -317,11 +329,11 @@ def main() -> int:
         if page_paths_found.isdisjoint(peers):
             errors.append(f"LIEN VERS UN ARTICLE DU CLUSTER absent {path}")
         parent = {
-            "Audit SEO": "/seo-audit",
-            "SEO local": "/local-seo",
-            "Monitoring SEO": "/website-monitoring",
-            "Reporting SEO": "/seo-reporting",
-            "Analyse concurrentielle SEO": "/competitor-analysis",
+            "SEO Audit": "/seo-audit",
+            "Local SEO": "/local-seo",
+            "SEO Monitoring": "/website-monitoring",
+            "SEO Reporting": "/seo-reporting",
+            "SEO Competitor Analysis": "/competitor-analysis",
         }[cluster]
         if parent not in page_paths_found:
             errors.append(f"LIEN VERS LANDING absent {path} -> {parent}")
@@ -333,13 +345,13 @@ def main() -> int:
             f"META DESCRIPTIONS NON UNIQUES: {len(set(descriptions))}/{len(article_paths)}"
         )
 
-    hub = page_parsers.get("/ressources")
+    hub = page_parsers.get(RESOURCE_HUB)
     if hub:
         hub_paths = {internal_path(href, base_url) for href in hub.hrefs}
         for path in article_paths:
             if path not in hub_paths:
                 errors.append(f"ARTICLE ABSENT DU HUB {path}")
-        hub_status, hub_html = fetch(base_url, "/ressources", args.timeout)
+        hub_status, hub_html = fetch(base_url, RESOURCE_HUB, args.timeout)
         for cluster in CLUSTERS:
             if cluster not in hub_html:
                 errors.append(f"THÉMATIQUE ABSENTE DU HUB {cluster}")
@@ -350,7 +362,7 @@ def main() -> int:
             continue
         paths = {internal_path(href, base_url) for href in page.hrefs}
         for slug in slugs:
-            target = f"/ressources/{slug}"
+            target = f"{RESOURCE_HUB}/{slug}"
             if target not in paths:
                 errors.append(f"LIEN CONTEXTUEL ABSENT {landing} -> {target}")
 
@@ -384,7 +396,7 @@ def main() -> int:
             errors.append(f"LIEN INTERNE HTTP {status or 'ERREUR'} {route}: {body[:120]}")
 
     for slug in TEST_SLUGS:
-        status, _ = fetch(base_url, f"/ressources/{slug}", args.timeout)
+        status, _ = fetch(base_url, f"{RESOURCE_HUB}/{slug}", args.timeout)
         if status not in (404, 410):
             errors.append(f"ROUTE DE TEST ACCESSIBLE {slug}: HTTP {status}")
 

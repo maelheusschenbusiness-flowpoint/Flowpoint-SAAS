@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { isProductionMarketingHostname } from "@shared/marketing-host";
 
 const APOLLO_BOOTSTRAP_ID = "flowpoint-apollo-tracker-bootstrap";
 const APOLLO_TRACKER_SRC = "https://assets.apollo.io/micro/website-tracker/tracker.iife.js";
@@ -61,7 +62,10 @@ export function ApolloTracker() {
 
   useEffect(() => {
     const syncConsent = () => {
-      if (ANALYTICS_DISABLED) {
+      if (
+        ANALYTICS_DISABLED ||
+        !isProductionMarketingHostname(window.location.hostname)
+      ) {
         setTrackingEnabled(false);
         stopApolloTracker();
         return;
@@ -82,7 +86,11 @@ export function ApolloTracker() {
   }, []);
 
   useEffect(() => {
-    if (trackingEnabled && !ANALYTICS_DISABLED) {
+    if (
+      trackingEnabled &&
+      !ANALYTICS_DISABLED &&
+      isProductionMarketingHostname(window.location.hostname)
+    ) {
       injectApolloTracker();
     } else {
       stopApolloTracker();

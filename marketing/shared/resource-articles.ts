@@ -43,6 +43,7 @@ import { RESOURCE_ARTICLE_OPPORTUNITES_SEO_CONCURRENCE } from "./resource-articl
 export const RESOURCE_SITE_URL = "https://flowpoint.pro";
 export const RESOURCE_HUB_PATH = "/resources";
 const ENGLISH_RESOURCE_SLUGS: Record<string, string> = {
+  "comment-faire-audit-seo-site-web": "how-to-perform-website-seo-audit",
   "analyse-contenu-concurrents": "competitor-content-analysis",
   "analyse-concurrentielle-seo-guide": "seo-competitor-analysis-guide",
   "analyse-backlinks-concurrents": "competitor-backlink-analysis",

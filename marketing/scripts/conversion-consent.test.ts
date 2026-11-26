@@ -121,7 +121,7 @@ test("marketing attribution is validated and preserved without adding a visitor 
   );
   captureMarketingAttribution();
   const signupLink = {
-    href: "https://app.flowpoint.pro/signin.html?plan=pro",
+    href: "https://app.flowpoint.pro/signin.html?plan=pro&utm_source=staging&fp_source=staging&fp_vid=test-visitor",
   } as HTMLAnchorElement;
 
   addFunnelAttributionToSignupLink(signupLink);
@@ -238,6 +238,34 @@ test("funnel events are limited to the two allowed steps and deduplicated daily"
   assert.deepEqual(Object.keys(payload).sort(), [
     "etape", "source", "utm_medium", "utm_source", "visiteurId",
   ]);
+});
+
+test("staging host sends no commercial tracking and creates no visitor identity", async () => {
+  installWindow(
+    "accepted",
+    "https://flowpoint-marketing-staging.onrender.com/?utm_source=Google",
+  );
+  const fetchCalls: unknown[] = [];
+  globalThis.fetch = ((...args: unknown[]) => {
+    fetchCalls.push(args);
+    return Promise.resolve(new Response(null, { status: 204 }));
+  }) as typeof fetch;
+  const signupLink = {
+    href: "https://app.flowpoint.pro/signin.html?plan=pro",
+  } as HTMLAnchorElement;
+
+  captureMarketingAttribution();
+  sendFunnelEvent("landing_vue");
+  assert.equal(getFunnelVisitorId(), null);
+  assert.deepEqual(getFunnelAttribution(), {});
+  addFunnelAttributionToSignupLink(signupLink);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(fetchCalls, []);
+  assert.equal(
+    signupLink.href,
+    "https://app.flowpoint.pro/signin.html?plan=pro&lang=en",
+  );
 });
 
 test("trial disclosure states the card requirement and links to pricing", () => {

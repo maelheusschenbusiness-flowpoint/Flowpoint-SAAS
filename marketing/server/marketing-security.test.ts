@@ -40,6 +40,15 @@ test("continues allowing the FlowPoint application origins", () => {
   );
 });
 
+test("does not accept the unconfigured www origin for marketing writes", () => {
+  assert.equal(
+    isAllowedMarketingOrigin(
+      requestForOrigin({ origin: "https://www.flowpoint.pro" }),
+    ),
+    false,
+  );
+});
+
 test("rejects a cross-site origin and missing origin headers", () => {
   assert.equal(
     isAllowedMarketingOrigin(requestForOrigin({ origin: "https://attacker.test" })),

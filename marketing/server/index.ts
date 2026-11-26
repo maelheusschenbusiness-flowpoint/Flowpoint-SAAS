@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { isPublicPath } from "./routes/public-paths";
+import { shouldSetNoindex } from "./robots-policy";
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,13 +13,14 @@ const httpServer = createServer(app);
 // from X-Forwarded-For without trusting arbitrary proxy chains.
 app.set("trust proxy", 1);
 
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  if (process.env.ROBOTS_NOINDEX === "true") {
+  res.removeHeader("X-Robots-Tag");
+  if (shouldSetNoindex(req.hostname, process.env.NODE_ENV)) {
     res.setHeader("X-Robots-Tag", "noindex, nofollow");
   }
   if (process.env.NODE_ENV === "production") {

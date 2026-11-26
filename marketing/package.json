@@ -16,7 +16,7 @@
     "test:public-audit:db": "PUBLIC_AUDIT_TEST_MODE=true PUBLIC_AUDIT_MAX_CONCURRENT=4 RUN_PUBLIC_AUDIT_DB_TESTS=true tsx --test server/public-audit-quota.integration.test.ts",
     "test:portable-integrations": "tsx --test server/resendClient.test.ts",
     "seo:validate": "python3 scripts/validate-seo.py",
-    "test:render-security": "tsx --test server/marketing-security.test.ts"
+    "test:render-security": "tsx --test server/marketing-security.test.ts server/robots-policy.test.ts server/contact-config.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.4",

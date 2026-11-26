@@ -1,23 +1,32 @@
 # FlowPoint public marketing service
 
-This folder is an isolated marketing application added alongside the existing
-FlowPoint SaaS monorepo. It does not replace or modify the SaaS package,
-workspace lockfile, API, authentication, billing, or database configuration.
+This folder contains the FlowPoint public marketing application alongside the
+existing SaaS monorepo. It does not replace or modify the SaaS package,
+workspace lockfile, API, authentication, billing, or app database.
 
-## Render staging setup
+## Existing Render service
 
 - Set the Render service **Root Directory** to `marketing`.
 - Install with `corepack pnpm install --frozen-lockfile`.
-- Build with `VITE_ANALYTICS_DISABLED=true corepack pnpm run build`.
+- Build with `VITE_ANALYTICS_DISABLED=false corepack pnpm run build` when the
+  existing service serves both the production apex and Render staging host.
+- Host checks keep the staging host noindex and exclude it from commercial
+  tracking; do not use one global robots setting for both hosts.
+- Render may automatically create and redirect a `www` alias when the apex is
+  attached. Keep the existing Namecheap CNAME unchanged; do not add another DNS
+  record.
 - Start with `corepack pnpm start`.
-- Use `/healthz` as the health-check path and set `ROBOTS_NOINDEX=true`.
-- Keep the public audit disabled until its separate staging quota database and
-  reviewed schema are ready.
+- Use `/healthz` as the health-check path.
+- Keep the public audit disabled until its quota tables and settings have been
+  reviewed and activation is authorized.
 
-Use staging-only values for `DATABASE_URL`, `PUBLIC_AUDIT_DATABASE_URL`,
-`SESSION_SECRET`, `OPENAI_API_KEY`, and `RESEND_API_KEY`. Never copy production
-data or production credentials into this service. The marketing application
-does not need Stripe or SaaS authentication.
+Use only the existing Render service and PostgreSQL resources. Do not create a
+second service, database, paid add-on, or plan upgrade. Configure secrets only
+in Render's private environment settings. Do not copy historical Replit data:
+it remains untouched unless a separate migration is approved. The marketing
+application does not need Stripe or SaaS authentication.
 
-No Render service is created by this branch. Do not run database migrations
-against the existing production database.
+For the exact cutover, DNS, settings, and rollback gates, see
+[`docs/flowpoint-render-cutover.md`](./docs/flowpoint-render-cutover.md). The
+possible historical-data copy is documented but intentionally not executed in
+[`docs/flowpoint-replit-data-migration.md`](./docs/flowpoint-replit-data-migration.md).

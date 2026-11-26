@@ -9,6 +9,7 @@ import {
   getProductionResourceArticles,
   getResourceArticleCanonical,
   getResourceArticleFromPath,
+  getResourceArticlePath,
   RESOURCE_SITE_URL,
 } from "../shared/resource-articles";
 import { HOME_FAQS } from "../shared/home-faqs";
@@ -157,7 +158,6 @@ test("free SEO audit has distinct, accurate metadata and a production canonical"
   assert.ok(html.includes(`<link rel="canonical" href="${RESOURCE_SITE_URL}/free-seo-audit"`));
   assert.deepEqual(jsonLd(html), [buildFaqPageJsonLd(FREE_SEO_AUDIT_FAQS)]);
   assert.doesNotMatch(html, /<meta name="robots" content="noindex/);
-  assert.match(readFileSync("server/index.ts", "utf8"), /ROBOTS_NOINDEX === "true"[\s\S]*?X-Robots-Tag/);
 });
 
 test("pricing FAQ schema has exact English and French trial disclosures", () => {
@@ -201,6 +201,27 @@ test("resource schemas use the English canonical URL and breadcrumb labels", () 
     ["Home", "Resources", article.h1],
   );
   assert.equal(breadcrumb.itemListElement[1].item, `${RESOURCE_SITE_URL}/resources`);
+});
+
+test("legacy French resource slugs canonicalize to the published English route", () => {
+  const canonicalPath = "/resources/how-to-perform-website-seo-audit";
+  const canonical = `${RESOURCE_SITE_URL}${canonicalPath}`;
+  assert.equal(
+    getResourceArticlePath("comment-faire-audit-seo-site-web"),
+    canonicalPath,
+  );
+  assert.equal(
+    getResourceArticleCanonical("comment-faire-audit-seo-site-web"),
+    canonical,
+  );
+  assert.equal(
+    getResourceArticleCanonical("how-to-perform-website-seo-audit"),
+    canonical,
+  );
+  assert.equal(
+    getResourceArticleFromPath("/resources/comment-faire-audit-seo-site-web")?.slug,
+    "comment-faire-audit-seo-site-web",
+  );
 });
 
 test("every production article schema language agrees with the English document shell", () => {

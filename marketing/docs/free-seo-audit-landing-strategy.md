@@ -41,7 +41,7 @@ syntax, basic response/security signals, and sampled links/assets. It explicitly
 states that the audit does not provide Core Web Vitals, rankings or traffic,
 full-site crawling, browser-based visual review, or vulnerability testing.
 
-The staging service's `ROBOTS_NOINDEX=true` setting is not changed by this
-branch. Its live Render value is outside this source-only review and is not
-verified here. The existing server behavior continues to add an
-`X-Robots-Tag: noindex, nofollow` header when that setting is enabled.
+The existing Render staging host remains `noindex, nofollow` based on the
+incoming hostname, even when it shares a service and build with `flowpoint.pro`.
+This source-only review does not verify the live Render response; verify the
+response header after an approved staging deploy.

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { isProductionMarketingHostname } from "@shared/marketing-host";
 
 const GA_MEASUREMENT_ID = "G-32HPNSRLEM";
 const GA_SCRIPT_ID = "flowpoint-ga4-script";
@@ -66,7 +67,10 @@ export function GoogleAnalytics() {
 
   useEffect(() => {
     const syncConsent = () => {
-      if (ANALYTICS_DISABLED) {
+      if (
+        ANALYTICS_DISABLED ||
+        !isProductionMarketingHostname(window.location.hostname)
+      ) {
         setAnalyticsEnabled(false);
         stopGoogleAnalytics();
         return;
@@ -91,7 +95,11 @@ export function GoogleAnalytics() {
   }, []);
 
   useEffect(() => {
-    if (!analyticsEnabled || ANALYTICS_DISABLED) {
+    if (
+      !analyticsEnabled ||
+      ANALYTICS_DISABLED ||
+      !isProductionMarketingHostname(window.location.hostname)
+    ) {
       lastTrackedPage.current = null;
       return;
     }
