@@ -95,7 +95,7 @@ inventer de jeton DNS.
 
 ### Porte de sécurité obligatoire pour l’audit gratuit
 
-    Les contrôles PostgreSQL de [0m`flowpoint_audit_staging` ont été exécutés en lecture seule par l’utilisateur dans le Web Shell Render le 26 novembre 2026 et sont clôturés : 9/9 colonnes conformes; DELETE, USAGE du schéma public, résolution des tables et index de purge conformes; clés, contraintes, SELECT/INSERT/UPDATE et absence de RLS confirmés. Les limites du rôle et de la base sont illimitées; PostgreSQL indique un maximum de 103 connexions et 8 utilisées au relevé. Deux slots et zéro compteur étaient présents au relevé précédent. **Ne pas relancer de commandes SQL de vérification** : aucune autre lecture de base n’est demandée.
+    Les contrôles PostgreSQL de `flowpoint_audit_staging` ont été exécutés en lecture seule par l’utilisateur dans le Web Shell Render le 26 novembre 2026 et sont clôturés : 9/9 colonnes conformes; DELETE, USAGE du schéma public, résolution des tables et index de purge conformes; clés, contraintes, SELECT/INSERT/UPDATE et absence de RLS confirmés. Les limites du rôle et de la base sont illimitées; PostgreSQL indique un maximum de 103 connexions et 8 utilisées au relevé. Deux slots et zéro compteur étaient présents au relevé précédent. **Ne pas relancer de commandes SQL de vérification** : aucune autre lecture de base n’est demandée.
 
     La configuration observée sur le service staging a quatre indicateurs à faux. Pour le profil pilote exact, définir ces valeurs dans Render :
 
