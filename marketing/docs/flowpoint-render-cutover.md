@@ -7,10 +7,12 @@ et le PostgreSQL Render déjà existant. Elle ne crée pas de service, base,
 instance, plan ou add-on payant. Elle ne touche pas à `app.flowpoint.pro`, aux
 branches protégées, aux données Replit, ni à la publication Replit.
 
-Le code et ce document peuvent être préparés dans une PR. Aucune étape de cette
-procédure n’a été exécutée : pas de changement DNS, de secret Render, de
-déploiement de production, de schéma, d’écriture de base, d’audit, de formulaire
-ou d’e-mail réel. Toute bascule DNS et toute activation d’écriture en production
+Le code et ce document sont préparés dans une PR. Les contrôles PostgreSQL
+Render en lecture seule ont été effectués par l’utilisateur le 26 novembre 2026 ;
+leurs résultats et les seuls contrôles restants sont consignés dans le
+[rapport de préparation actualisé](./flowpoint-render-readiness.md).
+Cette mise à jour ne réalise aucun changement DNS, secret Render, déploiement,
+schéma, écriture de base, audit, formulaire ou e-mail réel. Toute bascule DNS et toute activation d’écriture en production
 restent soumises à une autorisation explicite distincte.
 
 **Le service Replit et toutes les données historiques Replit restent actifs et
@@ -131,74 +133,18 @@ compteurs de quotas pseudonymisés dans la base existante; ne pas provoquer ces
 `app.flowpoint.pro`;
 les événements de funnel existants pointent toujours vers cette application.
 
-Pour effectuer la revue sans modifier la base, exécuter ces lectures dans le
-PostgreSQL Render après avoir sélectionné le rôle utilisé par
-`PUBLIC_AUDIT_DATABASE_URL`. Elles n’exposent ni les clés pseudonymisées de
-visiteurs ni des données de leads. Comparer les colonnes, contraintes et index
-au schéma de référence ci-dessus; ne pas exécuter ce dernier.
+**État actualisé au 26 novembre 2026 :** ne pas relancer la liste générale
+ci-dessus. Les tables, clés, contraintes, droits SELECT/INSERT/UPDATE, RLS,
+compteurs et capacité globale ont déjà été relevés sur Render. Le
+[rapport de préparation](./flowpoint-render-readiness.md) distingue les acquis
+des points encore ouverts et contient le **seul bloc Web Shell à exécuter** :
+colonnes exactes, DELETE, résolution du schéma, forme de l’index, limites
+spécifiques et profil du service, sans écriture ni affichage de secrets.
 
-```sql
-SELECT current_database() AS database_name, current_user AS application_role;
-
-SELECT table_name, column_name, udt_name, is_nullable, column_default
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND table_name IN ('public_audit_quota_counters', 'public_audit_concurrency_slots')
-ORDER BY table_name, ordinal_position;
-
-SELECT relation.relname AS table_name, constraint_row.conname,
-       constraint_row.contype, pg_get_constraintdef(constraint_row.oid) AS definition
-FROM pg_constraint AS constraint_row
-JOIN pg_class AS relation ON relation.oid = constraint_row.conrelid
-JOIN pg_namespace AS schema_row ON schema_row.oid = relation.relnamespace
-WHERE schema_row.nspname = 'public'
-  AND relation.relname IN ('public_audit_quota_counters', 'public_audit_concurrency_slots')
-ORDER BY relation.relname, constraint_row.conname;
-
-SELECT tablename, indexname, indexdef
-FROM pg_indexes
-WHERE schemaname = 'public'
-  AND tablename IN ('public_audit_quota_counters', 'public_audit_concurrency_slots')
-ORDER BY tablename, indexname;
-
-SELECT has_table_privilege(current_user, 'public.public_audit_quota_counters', 'SELECT') AS quota_select,
-       has_table_privilege(current_user, 'public.public_audit_quota_counters', 'INSERT') AS quota_insert,
-       has_table_privilege(current_user, 'public.public_audit_quota_counters', 'UPDATE') AS quota_update,
-       has_table_privilege(current_user, 'public.public_audit_quota_counters', 'DELETE') AS quota_delete,
-       has_table_privilege(current_user, 'public.public_audit_concurrency_slots', 'SELECT') AS slots_select,
-       has_table_privilege(current_user, 'public.public_audit_concurrency_slots', 'INSERT') AS slots_insert,
-       has_table_privilege(current_user, 'public.public_audit_concurrency_slots', 'UPDATE') AS slots_update;
-
-SELECT relation.relname AS table_name, relation.relrowsecurity, relation.relforcerowsecurity
-FROM pg_class AS relation
-JOIN pg_namespace AS schema_row ON schema_row.oid = relation.relnamespace
-WHERE schema_row.nspname = 'public'
-  AND relation.relname IN ('public_audit_quota_counters', 'public_audit_concurrency_slots');
-
-SELECT tablename, policyname, permissive, roles, cmd, qual, with_check
-FROM pg_policies
-WHERE schemaname = 'public'
-  AND tablename IN ('public_audit_quota_counters', 'public_audit_concurrency_slots');
-
-SELECT quota_type, day_utc, count(*) AS counter_rows, sum(used)::bigint AS uses
-FROM public.public_audit_quota_counters
-WHERE day_utc >= (now() AT TIME ZONE 'UTC')::date - 1
-GROUP BY quota_type, day_utc
-ORDER BY day_utc, quota_type;
-
-SELECT count(*) FILTER (WHERE slot_id BETWEEN 1 AND 2) AS configured_slots,
-       count(*) FILTER (WHERE lease_expires_at > now()) AS active_leases
-FROM public.public_audit_concurrency_slots;
-
-SHOW max_connections;
-SELECT count(*) AS visible_database_connections
-FROM pg_stat_activity
-WHERE datname = current_database();
-```
-
-Un résultat `configured_slots = 0` n’est pas, à lui seul, un blocage : les
-slots sont créés par le service au premier audit. Les permissions d’insertion
-et de mise à jour doivent toutefois être confirmées avant l’activation.
+**Attention à l’activation :** avec `PUBLIC_AUDIT_ENABLED=true`, le moteur
+lance une purge DELETE au démarrage puis chaque heure. Ne pas activer ou
+redémarrer ce profil pendant une vérification strictement en lecture seule.
+L’autorisation d’activer les écritures reste distincte.
 
 7. Avant DNS, vérifier en lecture seule la paire de domaines dans Render, puis
    le staging :
