@@ -7,6 +7,7 @@ import { initMissionsTables } from "./services/init-missions.js";
 import { initAutomationTables } from "./services/init-automation.js";
 import { initMonitorsTables } from "./services/init-monitors.js";
 import { initDataTables } from "./services/init-data-tables.js";
+import { initMarketIntelTables } from "./services/init-market-intel-tables.js";
 import { initRlsSetup } from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
@@ -324,6 +325,10 @@ async function main() {
       .catch((err: unknown) => {
         logger.warn({ err }, "[startup] init-data-tables step failed (non-fatal)");
       });
+    await runCriticalStartupStep("init-market-intel-tables", initMarketIntelTables)
+      .catch((err: unknown) => {
+        logger.warn({ err }, "[startup] init-market-intel-tables step failed (non-fatal)");
+      });
 
     // P0-5 : initAiMigration was previously only run on the full path.
     // Add it here so ai_recommendations / ai_workspace_profiles etc. are always present.
@@ -361,6 +366,7 @@ async function main() {
     // init-data-tables MUST run first: creates organizations, users, org_settings
     // and all core tables that init-missions/automation/monitors depend on.
     await runCriticalStartupStep("init-data-tables", initDataTables);
+    await runCriticalStartupStep("init-market-intel-tables", initMarketIntelTables);
     await runCriticalStartupStep("init-missions",   initMissionsTables);
     await runCriticalStartupStep("init-automation", initAutomationTables);
     await runCriticalStartupStep("init-monitors",   initMonitorsTables);
