@@ -82,6 +82,13 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  const serverBundle = await readFile("dist/index.cjs", "utf-8");
+  if (!serverBundle.includes("/api/internal/proxy-ip-diagnostic")) {
+    throw new Error(
+      "Production server bundle is missing the temporary Render proxy diagnostic route.",
+    );
+  }
 }
 
 async function generateProductionSitemap() {
