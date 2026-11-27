@@ -10,6 +10,7 @@ import { registerPublicAuditRoutes } from "./public-audit-routes";
 import { escapeHtml } from "./html-escape";
 import { isAllowedMarketingOrigin } from "./request-origin";
 import { getContactRecipient } from "./contact-config";
+import { registerProxyIpDiagnostic } from "./proxy-ip-diagnostic";
 
 function requireSameOrigin(req: Request, res: Response, next: NextFunction) {
   if (process.env.NODE_ENV !== "production") {
@@ -43,6 +44,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  registerProxyIpDiagnostic(app);
   registerPublicAuditRoutes(app);
 
   app.post(api.leads.create.path, requireSameOrigin, leadsLimiter, async (req, res) => {
